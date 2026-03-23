@@ -1,0 +1,26 @@
+{
+  "name": "kasirgoplus-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "migrate": "bun src/scripts/migrate.ts",
+    "seed": "bun src/scripts/seed.ts",
+    "smoke": "bun src/scripts/smoke.ts",
+    "scenario": "bun src/scripts/scenario.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.6.10",
+    "jose": "^5.9.6",
+    "postgres": "^3.4.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/bun": "^1.2.5",
+    "typescript": "^5.7.3"
+  }
+}
