@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks:
+      - kasirgoplus_powersync
+
+networks:
+  kasirgoplus_powersync:
+    external: true
+    name: kasirgoplus-powersync_default
+
