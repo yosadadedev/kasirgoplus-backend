@@ -8,9 +8,7 @@ import { hashSecret, verifySecret } from "../auth/password";
 import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } from "../rbac";
 
 const base64Url = (bytes: Uint8Array) => {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  const b64 = btoa(binary);
+  const b64 = Buffer.from(bytes).toString("base64");
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 

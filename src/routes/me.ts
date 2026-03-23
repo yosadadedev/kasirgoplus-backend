@@ -40,9 +40,7 @@ const normalizePermissions = (role: Role, perms: Permissions | null) => {
 };
 
 const base64Url = (bytes: Uint8Array) => {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  const b64 = btoa(binary);
+  const b64 = Buffer.from(bytes).toString("base64");
   return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 };
 
@@ -168,4 +166,3 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
       },
     });
   });
-

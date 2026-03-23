@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { ZodError } from "zod";
 import { env } from "./env";
 import { authRoutes } from "./routes/auth";
 import { usersRoutes } from "./routes/users";
@@ -8,6 +9,21 @@ import { categoriesRoutes } from "./routes/categories";
 import { productsRoutes } from "./routes/products";
 
 const app = new Hono();
+
+app.onError((err, c: any) => {
+  if (err instanceof ZodError) {
+    return c.json(
+      {
+        error: "VALIDATION_ERROR",
+        issues: err.issues,
+      },
+      400,
+    );
+  }
+
+  console.error(err);
+  return c.json({ error: "INTERNAL_SERVER_ERROR" }, 500);
+});
 
 app.use(
   "*",
