@@ -6,6 +6,9 @@ export const hashSecret = async (plain: string) => {
 };
 
 export const verifySecret = async (plain: string, hash: string) => {
-  return bcrypt.compare(plain, hash);
+  try {
+    return await bcrypt.compare(plain, hash);
+  } catch {
+    return false;
+  }
 };
-
