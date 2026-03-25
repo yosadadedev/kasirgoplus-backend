@@ -7,6 +7,7 @@ import { usersRoutes } from "./routes/users";
 import { meRoutes } from "./routes/me";
 import { categoriesRoutes } from "./routes/categories";
 import { productsRoutes } from "./routes/products";
+import { powersyncRoutes } from "./routes/powersync";
 
 const app = new Hono();
 
@@ -41,6 +42,7 @@ app.route("/v1/users", usersRoutes);
 app.route("/v1/me", meRoutes);
 app.route("/v1/categories", categoriesRoutes);
 app.route("/v1/products", productsRoutes);
+app.route("/v1/powersync", powersyncRoutes);
 
 export default {
   port: env.PORT,
