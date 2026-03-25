@@ -84,22 +84,39 @@ export const usersRoutes = new Hono<{ Variables: HonoVariables }>()
     const permissions = { ...roleDefaultPermissions(input.role), ...(input.permissions ?? {}) };
     const passwordHash = input.password ? await hashSecret(input.password) : null;
     const pinHash = input.pin ? await hashSecret(input.pin) : null;
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim();
+    const phone = input.phone?.trim();
 
-    const rows = (await sql`
-      INSERT INTO users (tenant_id, email, name, phone, role, status, password_hash, pin_hash, permissions)
-      VALUES (
-        ${authUser.tenantId},
-        ${input.email},
-        ${input.name},
-        ${input.phone ?? null},
-        ${input.role},
-        ${input.status ?? "active"},
-        ${passwordHash},
-        ${pinHash},
-        ${sql.json(permissions)}
-      )
-      RETURNING id, tenant_id, email, name, phone, role, status, permissions
-    `) as unknown as { id: string; tenant_id: string; email: string; name: string; phone: string | null; role: Role; status: string; permissions: any }[];
+    const existing = await sql<{ id: string }[]>`
+      SELECT id
+      FROM users
+      WHERE tenant_id = ${authUser.tenantId} AND lower(email) = ${email}
+      LIMIT 1
+    `;
+    if (existing[0]) return c.json({ error: "EMAIL_TAKEN" }, 409);
+
+    let rows: { id: string; tenant_id: string; email: string; name: string; phone: string | null; role: Role; status: string; permissions: any }[];
+    try {
+      rows = (await sql`
+        INSERT INTO users (tenant_id, email, name, phone, role, status, password_hash, pin_hash, permissions)
+        VALUES (
+          ${authUser.tenantId},
+          ${email},
+          ${name},
+          ${phone ?? null},
+          ${input.role},
+          ${input.status ?? "active"},
+          ${passwordHash},
+          ${pinHash},
+          ${sql.json(permissions)}
+        )
+        RETURNING id, tenant_id, email, name, phone, role, status, permissions
+      `) as unknown as { id: string; tenant_id: string; email: string; name: string; phone: string | null; role: Role; status: string; permissions: any }[];
+    } catch (e: any) {
+      if (e?.code === "23505") return c.json({ error: "EMAIL_TAKEN" }, 409);
+      throw e;
+    }
     console.log(
       JSON.stringify({
         event: "users.create",
