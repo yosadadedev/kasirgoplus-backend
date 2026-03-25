@@ -1,5 +1,5 @@
 .env
+.env.docker
 .DS_Store
 node_modules
 dist
-

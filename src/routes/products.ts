@@ -5,6 +5,8 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
 import type { HonoVariables } from "../context";
 
+const UnitTypeSchema = z.enum(["piece", "weight", "volume"]);
+
 const ProductCreateSchema = z.object({
   name: z.string().min(1),
   price: z.number().nonnegative().optional(),
@@ -13,6 +15,9 @@ const ProductCreateSchema = z.object({
   stock: z.number().int().optional(),
   minStock: z.number().int().nullable().optional(),
   unit: z.string().min(1).nullable().optional(),
+  unitType: UnitTypeSchema.optional(),
+  baseUnit: z.string().min(1).optional(),
+  unitMultiplier: z.number().int().positive().optional(),
   image: z.string().min(1).nullable().optional(),
   barcode: z.string().min(1).nullable().optional(),
   description: z.string().min(1).nullable().optional(),
@@ -23,6 +28,43 @@ const ProductCreateSchema = z.object({
 });
 
 const ProductUpdateSchema = ProductCreateSchema.partial();
+
+const normalizeUnit = (input: {
+  unit?: string | null;
+  unitType?: z.infer<typeof UnitTypeSchema>;
+  baseUnit?: string;
+  unitMultiplier?: number;
+}) => {
+  const unitRaw = (input.unit ?? undefined)?.trim();
+  const unitNorm = unitRaw?.toLowerCase();
+  if (input.unitType && input.baseUnit && input.unitMultiplier) {
+    return {
+      unit: unitRaw,
+      unitType: input.unitType,
+      baseUnit: input.baseUnit,
+      unitMultiplier: input.unitMultiplier,
+    };
+  }
+  if (!unitNorm) {
+    return { unit: unitRaw, unitType: "piece" as const, baseUnit: "pcs" as const, unitMultiplier: 1 };
+  }
+  if (unitNorm === "kg" || unitNorm === "kilo" || unitNorm === "kilogram") {
+    return { unit: "kg", unitType: "weight" as const, baseUnit: "g" as const, unitMultiplier: 1000 };
+  }
+  if (unitNorm === "g" || unitNorm === "gram") {
+    return { unit: "g", unitType: "weight" as const, baseUnit: "g" as const, unitMultiplier: 1 };
+  }
+  if (unitNorm === "l" || unitNorm === "liter" || unitNorm === "litre") {
+    return { unit: "l", unitType: "volume" as const, baseUnit: "ml" as const, unitMultiplier: 1000 };
+  }
+  if (unitNorm === "ml") {
+    return { unit: "ml", unitType: "volume" as const, baseUnit: "ml" as const, unitMultiplier: 1 };
+  }
+  if (unitNorm === "pcs" || unitNorm === "pc" || unitNorm === "piece" || unitNorm === "buah") {
+    return { unit: "pcs", unitType: "piece" as const, baseUnit: "pcs" as const, unitMultiplier: 1 };
+  }
+  return { unit: unitRaw, unitType: "piece" as const, baseUnit: "pcs" as const, unitMultiplier: 1 };
+};
 
 export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
   .use("*", requireAuth)
@@ -38,6 +80,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         stock,
         min_stock,
         unit,
+        unit_type,
+        base_unit,
+        unit_multiplier,
         image,
         barcode,
         description,
@@ -62,6 +107,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         stock: Number(r.stock ?? 0),
         minStock: r.min_stock == null ? undefined : Number(r.min_stock),
         unit: r.unit ?? undefined,
+        unitType: r.unit_type ?? "piece",
+        baseUnit: r.base_unit ?? "pcs",
+        unitMultiplier: Number(r.unit_multiplier ?? 1),
         image: r.image ?? undefined,
         barcode: r.barcode ?? undefined,
         description: r.description ?? undefined,
@@ -77,6 +125,7 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
   .post("/", requirePermission("canManageProducts"), async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = ProductCreateSchema.parse(await c.req.json());
+    const unitInfo = normalizeUnit(input);
     const rows = (await sql`
       INSERT INTO products (
         tenant_id,
@@ -87,6 +136,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         stock,
         min_stock,
         unit,
+        unit_type,
+        base_unit,
+        unit_multiplier,
         image,
         barcode,
         description,
@@ -106,7 +158,10 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         ${input.categoryId ?? null},
         ${input.stock ?? 0},
         ${input.minStock ?? null},
-        ${input.unit ?? null},
+        ${unitInfo.unit ?? null},
+        ${unitInfo.unitType},
+        ${unitInfo.baseUnit},
+        ${unitInfo.unitMultiplier},
         ${input.image ?? null},
         ${input.barcode ?? null},
         ${input.description ?? null},
@@ -150,6 +205,7 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
     const authUser = c.get("authUser")!;
     const id = c.req.param("id");
     const input = ProductUpdateSchema.parse(await c.req.json());
+    const unitInfo = normalizeUnit(input);
 
     const rows = (await sql`
       UPDATE products
@@ -160,7 +216,10 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         category_id = COALESCE(${input.categoryId ?? null}, category_id),
         stock = COALESCE(${input.stock ?? null}, stock),
         min_stock = COALESCE(${input.minStock ?? null}, min_stock),
-        unit = COALESCE(${input.unit ?? null}, unit),
+        unit = COALESCE(${unitInfo.unit ?? null}, unit),
+        unit_type = COALESCE(${unitInfo.unitType ?? null}, unit_type),
+        base_unit = COALESCE(${unitInfo.baseUnit ?? null}, base_unit),
+        unit_multiplier = COALESCE(${unitInfo.unitMultiplier ?? null}, unit_multiplier),
         image = COALESCE(${input.image ?? null}, image),
         barcode = COALESCE(${input.barcode ?? null}, barcode),
         description = COALESCE(${input.description ?? null}, description),
@@ -186,6 +245,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         stock: Number(r.stock ?? 0),
         minStock: r.min_stock == null ? undefined : Number(r.min_stock),
         unit: r.unit ?? undefined,
+        unitType: r.unit_type ?? "piece",
+        baseUnit: r.base_unit ?? "pcs",
+        unitMultiplier: Number(r.unit_multiplier ?? 1),
         image: r.image ?? undefined,
         barcode: r.barcode ?? undefined,
         description: r.description ?? undefined,
