@@ -5,7 +5,7 @@ import { sql } from "../db";
 
 const OpSchema = z.object({
   op: z.enum(["PUT", "PATCH", "DELETE"]),
-  table: z.enum(["categories", "products", "transactions", "expenses"]),
+  table: z.enum(["categories", "products", "transactions", "expenses", "customers"]),
   id: z.string(),
   data: z.record(z.any()).optional(),
 });
@@ -95,6 +95,30 @@ const allowedColumns: Record<string, Set<string>> = {
     "deleted_at",
     "updated_seq",
   ]),
+  customers: new Set([
+    "id",
+    "tenant_id",
+    "name",
+    "email",
+    "phone",
+    "address",
+    "city",
+    "date_of_birth",
+    "gender",
+    "is_active",
+    "total_purchases",
+    "total_spent",
+    "last_purchase_date",
+    "loyalty_points",
+    "customer_type",
+    "notes",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "deleted_at",
+    "updated_seq",
+  ]),
 };
 
 const booleanColumns: Record<string, Set<string>> = {
@@ -102,6 +126,7 @@ const booleanColumns: Record<string, Set<string>> = {
   products: new Set(["track_cost"]),
   transactions: new Set(["is_edited"]),
   expenses: new Set([]),
+  customers: new Set(["is_active"]),
 };
 
 const jsonColumns: Record<string, Set<string>> = {
@@ -109,6 +134,7 @@ const jsonColumns: Record<string, Set<string>> = {
   products: new Set(["variants"]),
   transactions: new Set(["items"]),
   expenses: new Set([]),
+  customers: new Set([]),
 };
 
 const normalizeValue = (table: string, col: string, value: any) => {
