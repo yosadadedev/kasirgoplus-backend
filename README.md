@@ -149,3 +149,7 @@ Requires bearer access token + permission `canManageCashiers`.
 - `git pull`
 - `sudo docker compose up -d`
 - `sudo docker restart kasirgoplus-powersync-powersync-1`
+
+### Cek Log Migration
+- `sudo docker exec -it kasirgoplus-postgres psql -U postgres -d kasirgoplus \
+  -c "SELECT id, applied_at FROM public.migrations ORDER BY applied_at DESC;"
