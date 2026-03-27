@@ -119,6 +119,22 @@ const allowedColumns: Record<string, Set<string>> = {
     "deleted_at",
     "updated_seq",
   ]),
+  settings: new Set([
+    "id",
+    "tenant_id",
+    "key",
+    "value",
+    "business_name",
+    "business_address",
+    "business_phone",
+    "business_email",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "deleted_at",
+    "updated_seq",
+  ]),
 };
 
 const booleanColumns: Record<string, Set<string>> = {
@@ -204,9 +220,12 @@ powersyncRoutes.post("/upload", async (c: any) => {
           .map((k) => `"${k}" = EXCLUDED."${k}"`)
           .join(", ");
 
+        // Conflict resolution: only update if the incoming data has a higher updated_seq 
+        // or if the existing row doesn't have an updated_seq.
         await tx.unsafe(
           `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-           ON CONFLICT (id) DO ${updates ? `UPDATE SET ${updates}` : "NOTHING"}`,
+           ON CONFLICT (id) DO UPDATE SET ${updates}
+           WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
           vals
         );
         continue;
@@ -218,8 +237,15 @@ powersyncRoutes.post("/upload", async (c: any) => {
         const vals = cols.map((k) => data[k]);
         vals.push(op.id, tenantId);
         const sets = cols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+        
+        // Similar check for PATCH
+        const seqIndex = cols.indexOf("updated_seq");
+        const whereClause = seqIndex !== -1 
+          ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
+          : "";
+
         await tx.unsafe(
-          `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2}`,
+          `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
           vals
         );
         continue;
