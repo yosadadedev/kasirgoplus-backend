@@ -40,11 +40,7 @@ BEGIN
       business_phone,
       business_email,
       created_at,
-      updated_at,
-      created_by,
-      updated_by,
-      deleted_at,
-      updated_seq
+      updated_at
     )
     SELECT
       'business_' || tenant_id::text,
@@ -54,11 +50,7 @@ BEGIN
       COALESCE(business_phone, ''),
       COALESCE(business_email, ''),
       COALESCE(created_at, now()),
-      COALESCE(updated_at, now()),
-      created_by,
-      updated_by,
-      deleted_at,
-      COALESCE(updated_seq, 0)
+      COALESCE(updated_at, now())
     FROM settings
     WHERE key = 'business'
     ON CONFLICT (id) DO NOTHING;
