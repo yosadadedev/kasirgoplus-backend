@@ -137,3 +137,15 @@ Requires bearer access token + permission `canManageCashiers`.
 - `POST /v1/users`
 - `PATCH /v1/users/:id`
 - `POST /v1/users/:id/revoke-sessions`
+
+### Deploy VPS backend (pull + rebuild + migrate) 
+- `cd ~/kasirgoplus-backend`
+- `git pull`
+- `sudo docker compose -f docker-compose.prod.yml up -d --build`
+- `sudo docker exec -it kasirgoplus-backend-backend-1 sh -lc 'bun run migrate'`
+
+### Deploy VPS powersync (pull + restart) 
+- `cd ~/kasirgoplus-powersync`
+- `git pull`
+- `sudo docker compose up -d`
+- `sudo docker restart kasirgoplus-powersync-powersync-1`
