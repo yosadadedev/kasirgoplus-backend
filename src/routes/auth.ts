@@ -129,18 +129,20 @@ export const authRoutes = new Hono()
         permissions: any;
       }[];
 
-      await tx`
+      const session = (await tx<{ id: string }[]>`
         INSERT INTO device_sessions (tenant_id, user_id, device_id, refresh_token_hash)
         VALUES (${tenantId}, ${newUser[0]!.id}, ${input.deviceId ?? null}, ${refreshTokenHash})
-      `;
+        RETURNING id
+      `) as unknown as { id: string }[];
 
-      return { tenantId, user: newUser[0]! };
+      return { tenantId, user: newUser[0]!, sessionId: session[0]!.id };
     });
 
     const effectivePerms = normalizePermissions("owner", created.user.permissions as any);
     const accessToken = await signAccessToken({
       sub: created.user.id,
       tenant_id: created.tenantId,
+      sid: created.sessionId,
       role: "owner",
       permissions: effectivePerms as Record<string, boolean>,
     });
@@ -177,13 +179,6 @@ export const authRoutes = new Hono()
     if (!passwordOk && !pinOk) return c.json({ error: "INVALID_CREDENTIALS" }, 401);
 
     const effectivePerms = normalizePermissions(user.role, user.permissions);
-    const accessToken = await signAccessToken({
-      sub: user.id,
-      tenant_id: user.tenant_id,
-      role: user.role,
-      permissions: effectivePerms as Record<string, boolean>,
-    });
-
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = await sha256Hex(refreshToken);
 
@@ -194,10 +189,20 @@ export const authRoutes = new Hono()
       WHERE user_id = ${user.id} AND revoked_at IS NULL
     `;
 
-    await sql`
+    const sessionRows = (await sql<{ id: string }[]>`
       INSERT INTO device_sessions (tenant_id, user_id, device_id, refresh_token_hash)
       VALUES (${user.tenant_id}, ${user.id}, ${input.deviceId ?? null}, ${refreshTokenHash})
-    `;
+      RETURNING id
+    `) as unknown as { id: string }[];
+    const sessionId = sessionRows[0]!.id;
+
+    const accessToken = await signAccessToken({
+      sub: user.id,
+      tenant_id: user.tenant_id,
+      sid: sessionId,
+      role: user.role,
+      permissions: effectivePerms as Record<string, boolean>,
+    });
 
     await sql`
       UPDATE users
@@ -222,11 +227,19 @@ export const authRoutes = new Hono()
     const input = RefreshSchema.parse(await c.req.json());
     const hash = await sha256Hex(input.refreshToken);
     const rows = await sql<
-      (DbUserRow & { session_id: string; session_created_at: string; session_revoked_at: string | null })[]
+      (DbUserRow & {
+        session_id: string;
+        session_created_at: string;
+        session_last_seen_at: string;
+        session_device_id: string | null;
+        session_revoked_at: string | null;
+      })[]
     >`
       SELECT
         s.id as session_id,
         s.created_at as session_created_at,
+        s.last_seen_at as session_last_seen_at,
+        s.device_id as session_device_id,
         s.revoked_at as session_revoked_at,
         u.id,
         u.tenant_id,
@@ -244,15 +257,19 @@ export const authRoutes = new Hono()
     `;
     const row = rows[0];
     if (!row || row.session_revoked_at || row.status !== "active") return c.json({ error: "UNAUTHORIZED" }, 401);
+    if (input.deviceId && row.session_device_id && row.session_device_id !== input.deviceId) {
+      return c.json({ error: "UNAUTHORIZED" }, 401);
+    }
 
-    const createdAt = new Date(row.session_created_at).getTime();
-    const expiresAt = createdAt + env.REFRESH_TOKEN_TTL_SECONDS * 1000;
+    const lastSeenAt = new Date(row.session_last_seen_at ?? row.session_created_at).getTime();
+    const expiresAt = lastSeenAt + env.REFRESH_TOKEN_TTL_SECONDS * 1000;
     if (Date.now() > expiresAt) return c.json({ error: "UNAUTHORIZED" }, 401);
 
     const effectivePerms = normalizePermissions(row.role, row.permissions);
     const accessToken = await signAccessToken({
       sub: row.id,
       tenant_id: row.tenant_id,
+      sid: row.session_id,
       role: row.role,
       permissions: effectivePerms as Record<string, boolean>,
     });
@@ -261,7 +278,7 @@ export const authRoutes = new Hono()
     const newHash = await sha256Hex(newRefreshToken);
     await sql`
       UPDATE device_sessions
-      SET refresh_token_hash = ${newHash}, last_seen_at = now()
+      SET refresh_token_hash = ${newHash}, last_seen_at = now(), device_id = COALESCE(device_id, ${input.deviceId ?? null})
       WHERE id = ${row.session_id}
     `;
 

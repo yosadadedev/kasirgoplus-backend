@@ -6,6 +6,7 @@ export type JwtRole = "owner" | "admin" | "cashier";
 export type AccessTokenClaims = {
   sub: string;
   tenant_id: string;
+  sid?: string;
   role: JwtRole;
   permissions?: Record<string, boolean>;
 };
@@ -14,7 +15,12 @@ const secretKey = new TextEncoder().encode(env.JWT_SECRET);
 
 export const signAccessToken = async (claims: AccessTokenClaims) => {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ tenant_id: claims.tenant_id, role: claims.role, permissions: claims.permissions })
+  return new SignJWT({
+    tenant_id: claims.tenant_id,
+    sid: claims.sid,
+    role: claims.role,
+    permissions: claims.permissions,
+  })
     .setProtectedHeader({ alg: "HS256", typ: "JWT", kid: env.POWERSYNC_JWT_KID })
     .setSubject(claims.sub)
     .setAudience(env.POWERSYNC_JWT_AUDIENCE)
@@ -29,6 +35,7 @@ export const verifyAccessToken = async (token: string) => {
   return {
     sub: String(payload.sub),
     tenant_id: String(payload.tenant_id),
+    sid: payload.sid ? String(payload.sid) : undefined,
     role: payload.role as JwtRole,
     permissions: (payload.permissions ?? undefined) as Record<string, boolean> | undefined,
   } satisfies AccessTokenClaims;

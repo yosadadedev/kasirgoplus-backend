@@ -127,7 +127,7 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = await sha256Hex(refreshToken);
 
-    await sql.begin(async (tx: any) => {
+    const sessionId = await sql.begin(async (tx: any) => {
       await tx`
         UPDATE users
         SET password_hash = ${newHash}, updated_at = now()
@@ -138,16 +138,19 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
         SET revoked_at = now()
         WHERE tenant_id = ${user.tenant_id} AND user_id = ${user.id} AND revoked_at IS NULL
       `;
-      await tx`
+      const rows = (await tx<{ id: string }[]>`
         INSERT INTO device_sessions (tenant_id, user_id, device_id, refresh_token_hash)
         VALUES (${user.tenant_id}, ${user.id}, ${input.deviceId ?? null}, ${refreshTokenHash})
-      `;
+        RETURNING id
+      `) as unknown as { id: string }[];
+      return rows[0]!.id;
     });
 
     const effectivePerms = normalizePermissions(user.role, user.permissions);
     const accessToken = await signAccessToken({
       sub: user.id,
       tenant_id: user.tenant_id,
+      sid: sessionId,
       role: user.role,
       permissions: effectivePerms as Record<string, boolean>,
     });
