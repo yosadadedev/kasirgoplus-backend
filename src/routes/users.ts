@@ -201,4 +201,37 @@ export const usersRoutes = new Hono<{ Variables: HonoVariables }>()
       WHERE tenant_id = ${authUser.tenantId} AND user_id = ${id} AND revoked_at IS NULL
     `;
     return c.json({ ok: true });
+  })
+  .delete("/:id", requirePermission("canManageCashiers"), async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const id = c.req.param("id");
+
+    if (id === authUser.id) return c.json({ error: "CANNOT_DELETE_SELF" }, 400);
+
+    const rows = (await sql<{ id: string; role: Role }[]>`
+      SELECT id, role
+      FROM users
+      WHERE id = ${id} AND tenant_id = ${authUser.tenantId}
+      LIMIT 1
+    `) as unknown as { id: string; role: Role }[];
+    const target = rows[0];
+    if (!target) return c.json({ error: "NOT_FOUND" }, 404);
+    if (target.role === "owner") return c.json({ error: "CANNOT_DELETE_OWNER" }, 400);
+
+    console.log(
+      JSON.stringify({
+        event: "users.delete",
+        tenantId: authUser.tenantId,
+        actorUserId: authUser.id,
+        actorRole: authUser.role,
+        targetUserId: id,
+        targetRole: target.role,
+      }),
+    );
+
+    await sql`
+      DELETE FROM users
+      WHERE id = ${id} AND tenant_id = ${authUser.tenantId}
+    `;
+    return c.json({ ok: true });
   });
