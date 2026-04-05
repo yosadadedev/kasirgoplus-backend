@@ -271,11 +271,21 @@ powersyncRoutes.post("/upload", async (c: any) => {
     for (const op of body.crud) {
       const table = op.table;
       const data = pickAllowed(table, op.data ?? {});
-      data.id = op.id;
+      const canonicalId =
+        table === "business_settings"
+          ? `business_${tenantId}`
+          : table === "printer_settings"
+            ? `printer_${tenantId}`
+            : op.id;
+      data.id = canonicalId;
       data.tenant_id = tenantId;
 
       if (op.op === "DELETE") {
-        await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
+        if (table === "business_settings" || table === "printer_settings") {
+          await tx.unsafe(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+        } else {
+          await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
+        }
         continue;
       }
 
@@ -290,14 +300,37 @@ powersyncRoutes.post("/upload", async (c: any) => {
           .map((k) => `"${k}" = EXCLUDED."${k}"`)
           .join(", ");
 
-        // Conflict resolution: only update if the incoming data has a higher updated_seq 
-        // or if the existing row doesn't have an updated_seq.
-        await tx.unsafe(
-          `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-           ON CONFLICT (id) DO UPDATE SET ${updates}
-           WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
-          vals
-        );
+        if (table === "business_settings" || table === "printer_settings") {
+          const seqIndex = cols.indexOf("updated_seq");
+          const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
+          const updCols = cols.filter((k) => k !== "tenant_id");
+          const updVals = updCols.map((k) => data[k]);
+          updVals.push(tenantId);
+          if (seqIndex !== -1) updVals.push(seqValue);
+          const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+          const whereClause = seqIndex !== -1 ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})` : "";
+          const updateResult = await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
+            updVals,
+          );
+
+          const updatedCount = (updateResult as any).count ?? 0;
+          if (updatedCount === 0) {
+            await tx.unsafe(
+              `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
+               ON CONFLICT (id) DO UPDATE SET ${updates}
+               WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+              vals,
+            );
+          }
+        } else {
+          await tx.unsafe(
+            `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
+             ON CONFLICT (id) DO UPDATE SET ${updates}
+             WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+            vals,
+          );
+        }
         continue;
       }
 
@@ -305,7 +338,6 @@ powersyncRoutes.post("/upload", async (c: any) => {
         const cols = Object.keys(data).filter((k) => k !== "id" && k !== "tenant_id");
         if (cols.length === 0) continue;
         const vals = cols.map((k) => data[k]);
-        vals.push(op.id, tenantId);
         const sets = cols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
         
         // Similar check for PATCH
@@ -314,10 +346,19 @@ powersyncRoutes.post("/upload", async (c: any) => {
           ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
           : "";
 
-        await tx.unsafe(
-          `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
-          vals
-        );
+        if (table === "business_settings" || table === "printer_settings") {
+          vals.push(tenantId);
+          await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${cols.length + 1} AND deleted_at IS NULL ${whereClause}`,
+            vals,
+          );
+        } else {
+          vals.push(op.id, tenantId);
+          await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
+            vals,
+          );
+        }
         continue;
       }
     }
