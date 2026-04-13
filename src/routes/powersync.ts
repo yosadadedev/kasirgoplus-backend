@@ -338,6 +338,35 @@ powersyncRoutes.post("/upload", async (c: any) => {
             }
           } catch (err: any) {
             if (err.code === "23505") {
+              if (table === "discounts" && typeof data.name === "string" && data.name.trim()) {
+                const existing = (await tx.unsafe(
+                  `SELECT id FROM discounts WHERE tenant_id = $1 AND deleted_at IS NULL AND lower(name) = lower($2) LIMIT 1`,
+                  [tenantId, data.name.trim()],
+                )) as any[];
+                const existingId = existing?.[0]?.id ? String(existing[0].id) : null;
+                if (existingId) {
+                  await tx.unsafe(
+                    `UPDATE discounts
+                     SET type = COALESCE($1, type),
+                         value = COALESCE($2, value),
+                         is_active = COALESCE($3, is_active),
+                         updated_at = COALESCE($4, updated_at),
+                         updated_by = COALESCE($5, updated_by),
+                         updated_seq = coalesce(updated_seq, 0) + 1
+                     WHERE id = $6 AND tenant_id = $7`,
+                    [
+                      data.type ?? null,
+                      data.value ?? null,
+                      data.is_active ?? null,
+                      data.updated_at ?? null,
+                      data.updated_by ?? null,
+                      existingId,
+                      tenantId,
+                    ],
+                  );
+                  continue;
+                }
+              }
               console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PUT.`);
               continue;
             }
@@ -371,6 +400,21 @@ powersyncRoutes.post("/upload", async (c: any) => {
             }
           } catch (err: any) {
             if (err.code === "23505") {
+              if (table === "discounts" && typeof (op.data as any)?.name === "string" && (op.data as any).name.trim()) {
+                const name = (op.data as any).name.trim();
+                const existing = (await tx.unsafe(
+                  `SELECT id FROM discounts WHERE tenant_id = $1 AND deleted_at IS NULL AND lower(name) = lower($2) LIMIT 1`,
+                  [tenantId, name],
+                )) as any[];
+                const existingId = existing?.[0]?.id ? String(existing[0].id) : null;
+                if (existingId) {
+                  await tx.unsafe(
+                    `UPDATE discounts SET ${sets}, updated_seq = coalesce(updated_seq, 0) + 1 WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
+                    [...vals, existingId, tenantId],
+                  );
+                  continue;
+                }
+              }
               console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PATCH.`);
               continue;
             }

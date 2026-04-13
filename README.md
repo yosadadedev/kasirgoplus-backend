@@ -143,6 +143,7 @@ Requires bearer access token + permission `canManageCashiers`.
 - `git pull`
 - `sudo docker compose -f docker-compose.prod.yml up -d --build`
 - `sudo docker exec -it kasirgoplus-backend-backend-1 sh -lc 'bun run migrate'`
+- `sudo docker restart kasirgoplus-backend-backend-1`
 
 ### Deploy VPS powersync (pull + restart) 
 - `cd ~/kasirgoplus-powersync`
