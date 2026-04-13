@@ -427,11 +427,13 @@ powersyncRoutes.post("/upload", async (c: any) => {
     return c.json({ ok: true });
   } catch (err: any) {
     const pgCode = typeof err?.code === "string" ? err.code : null;
+    const pgConstraint = typeof err?.constraint === "string" ? err.constraint : null;
+    const pgTable = typeof err?.table === "string" ? err.table : null;
     if (pgCode === "23503") return c.json({ error: "REFERENCE_NOT_FOUND", pgCode }, 409);
     if (pgCode === "42P01") return c.json({ error: "DB_TABLE_MISSING", pgCode }, 500);
     if (pgCode === "23502") return c.json({ error: "NOT_NULL_VIOLATION", pgCode }, 400);
     if (pgCode === "23514") return c.json({ error: "CHECK_VIOLATION", pgCode }, 400);
     console.error("PowerSync upload failed:", err);
-    return c.json({ error: "POWERSYNC_UPLOAD_FAILED", pgCode }, 500);
+    return c.json({ error: "POWERSYNC_UPLOAD_FAILED", pgCode, pgConstraint, pgTable }, 500);
   }
 });
