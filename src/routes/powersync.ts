@@ -267,127 +267,102 @@ powersyncRoutes.post("/upload", async (c: any) => {
   const body = UploadSchema.parse(await c.req.json());
   const tenantId = authUser.tenantId;
 
-  try {
-    await sql.begin(async (tx) => {
-      for (const op of body.crud) {
-        const table = op.table;
-        const data = pickAllowed(table, op.data ?? {});
-        const canonicalId =
-          table === "business_settings"
-            ? `business_${tenantId}`
-            : table === "printer_settings"
-              ? `printer_${tenantId}`
-              : op.id;
-        data.id = canonicalId;
-        data.tenant_id = tenantId;
+  await sql.begin(async (tx) => {
+    for (const op of body.crud) {
+      const table = op.table;
+      const data = pickAllowed(table, op.data ?? {});
+      const canonicalId =
+        table === "business_settings"
+          ? `business_${tenantId}`
+          : table === "printer_settings"
+            ? `printer_${tenantId}`
+            : op.id;
+      data.id = canonicalId;
+      data.tenant_id = tenantId;
 
-        if (op.op === "DELETE") {
-          if (table === "business_settings" || table === "printer_settings") {
-            await tx.unsafe(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-          } else {
-            await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
-          }
-          continue;
+      if (op.op === "DELETE") {
+        if (table === "business_settings" || table === "printer_settings") {
+          await tx.unsafe(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+        } else {
+          await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
         }
-
-        if (op.op === "PUT") {
-          const cols = Object.keys(data);
-          const vals = Object.values(data);
-          if (cols.length === 0) continue;
-          const colSql = cols.map((k) => `"${k}"`).join(", ");
-          const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
-          const updates = cols
-            .filter((k) => k !== "id" && k !== "tenant_id")
-            .map((k) => `"${k}" = EXCLUDED."${k}"`)
-            .join(", ");
-
-          try {
-            if (table === "business_settings" || table === "printer_settings") {
-              const seqIndex = cols.indexOf("updated_seq");
-              const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
-              const updCols = cols.filter((k) => k !== "tenant_id");
-              const updVals = updCols.map((k) => data[k]);
-              updVals.push(tenantId);
-              if (seqIndex !== -1) updVals.push(seqValue);
-              const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-              const whereClause =
-                seqIndex !== -1
-                  ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})`
-                  : "";
-              const updateResult = await tx.unsafe(
-                `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
-                updVals,
-              );
-
-              const updatedCount = (updateResult as any).count ?? 0;
-              if (updatedCount === 0) {
-                await tx.unsafe(
-                  `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-                   ON CONFLICT (id) DO UPDATE SET ${updates}
-                   WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
-                  vals,
-                );
-              }
-            } else {
-              await tx.unsafe(
-                `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-                 ON CONFLICT (id) DO UPDATE SET ${updates}
-                 WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
-                vals,
-              );
-            }
-          } catch (err: any) {
-            if (err.code === "23505") {
-              console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PUT.`);
-              continue;
-            }
-            throw err;
-          }
-          continue;
-        }
-
-        if (op.op === "PATCH") {
-          const cols = Object.keys(data).filter((k) => k !== "id" && k !== "tenant_id");
-          if (cols.length === 0) continue;
-          const vals = cols.map((k) => data[k]);
-          const sets = cols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-
-          const seqIndex = cols.indexOf("updated_seq");
-          const whereClause = seqIndex !== -1 ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})` : "";
-
-          try {
-            if (table === "business_settings" || table === "printer_settings") {
-              vals.push(tenantId);
-              await tx.unsafe(
-                `UPDATE ${table} SET ${sets} WHERE tenant_id = $${cols.length + 1} AND deleted_at IS NULL ${whereClause}`,
-                vals,
-              );
-            } else {
-              vals.push(op.id, tenantId);
-              await tx.unsafe(
-                `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
-                vals,
-              );
-            }
-          } catch (err: any) {
-            if (err.code === "23505") {
-              console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PATCH.`);
-              continue;
-            }
-            throw err;
-          }
-          continue;
-        }
+        continue;
       }
-    });
-    return c.json({ ok: true });
-  } catch (err: any) {
-    const pgCode = typeof err?.code === "string" ? err.code : null;
-    if (pgCode === "23503") return c.json({ error: "REFERENCE_NOT_FOUND", pgCode }, 409);
-    if (pgCode === "42P01") return c.json({ error: "DB_TABLE_MISSING", pgCode }, 500);
-    if (pgCode === "23502") return c.json({ error: "NOT_NULL_VIOLATION", pgCode }, 400);
-    if (pgCode === "23514") return c.json({ error: "CHECK_VIOLATION", pgCode }, 400);
-    console.error("PowerSync upload failed:", err);
-    return c.json({ error: "POWERSYNC_UPLOAD_FAILED", pgCode }, 500);
-  }
+
+      if (op.op === "PUT") {
+        const cols = Object.keys(data);
+        const vals = Object.values(data);
+        if (cols.length === 0) continue;
+        const colSql = cols.map((k) => `"${k}"`).join(", ");
+        const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+        const updates = cols
+          .filter((k) => k !== "id" && k !== "tenant_id")
+          .map((k) => `"${k}" = EXCLUDED."${k}"`)
+          .join(", ");
+
+        if (table === "business_settings" || table === "printer_settings") {
+          const seqIndex = cols.indexOf("updated_seq");
+          const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
+          const updCols = cols.filter((k) => k !== "tenant_id");
+          const updVals = updCols.map((k) => data[k]);
+          updVals.push(tenantId);
+          if (seqIndex !== -1) updVals.push(seqValue);
+          const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+          const whereClause = seqIndex !== -1 ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})` : "";
+          const updateResult = await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
+            updVals,
+          );
+
+          const updatedCount = (updateResult as any).count ?? 0;
+          if (updatedCount === 0) {
+            await tx.unsafe(
+              `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
+               ON CONFLICT (id) DO UPDATE SET ${updates}
+               WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+              vals,
+            );
+          }
+        } else {
+          await tx.unsafe(
+            `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
+             ON CONFLICT (id) DO UPDATE SET ${updates}
+             WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+            vals,
+          );
+        }
+        continue;
+      }
+
+      if (op.op === "PATCH") {
+        const cols = Object.keys(data).filter((k) => k !== "id" && k !== "tenant_id");
+        if (cols.length === 0) continue;
+        const vals = cols.map((k) => data[k]);
+        const sets = cols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+        
+        // Similar check for PATCH
+        const seqIndex = cols.indexOf("updated_seq");
+        const whereClause = seqIndex !== -1 
+          ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
+          : "";
+
+        if (table === "business_settings" || table === "printer_settings") {
+          vals.push(tenantId);
+          await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${cols.length + 1} AND deleted_at IS NULL ${whereClause}`,
+            vals,
+          );
+        } else {
+          vals.push(op.id, tenantId);
+          await tx.unsafe(
+            `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
+            vals,
+          );
+        }
+        continue;
+      }
+    }
+  });
+
+  return c.json({ ok: true });
 });

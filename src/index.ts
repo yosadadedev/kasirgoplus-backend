@@ -11,7 +11,7 @@ import { powersyncRoutes } from "./routes/powersync";
 
 const app = new Hono();
 
-app.onError((err: any, c: any) => {
+app.onError((err, c: any) => {
   if (err instanceof ZodError) {
     return c.json(
       {
@@ -22,10 +22,7 @@ app.onError((err: any, c: any) => {
     );
   }
 
-  console.error("Unhandled Backend Error:", err.message || err);
-  if (err.code) {
-    console.error("Postgres Error Code:", err.code);
-  }
+  console.error(err);
   return c.json({ error: "INTERNAL_SERVER_ERROR" }, 500);
 });
 
