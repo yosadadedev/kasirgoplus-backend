@@ -266,6 +266,16 @@ powersyncRoutes.post("/upload", async (c: any) => {
   const authUser = c.get("authUser")!;
   const body = UploadSchema.parse(await c.req.json());
   const tenantId = authUser.tenantId;
+  const debug = Bun.env.POWERSYNC_DEBUG === "1";
+
+  if (debug) {
+    const summary: Record<string, number> = {};
+    for (const op of body.crud) {
+      const key = `${op.op}:${op.table}`;
+      summary[key] = (summary[key] ?? 0) + 1;
+    }
+    console.info("[powersync.upload]", { tenantId, ops: body.crud.length, summary });
+  }
 
   await sql.begin(async (tx) => {
     for (const op of body.crud) {
