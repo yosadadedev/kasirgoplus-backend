@@ -303,28 +303,28 @@ powersyncRoutes.post("/upload", async (c: any) => {
 
           try {
             if (table === "business_settings" || table === "printer_settings") {
-              const seqIndex = cols.indexOf("updated_seq");
-              const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
-              const updCols = cols.filter((k) => k !== "tenant_id");
+              const updCols = cols.filter((k) => k !== "tenant_id" && k !== "id" && k !== "updated_seq");
               const updVals = updCols.map((k) => data[k]);
               updVals.push(tenantId);
-              if (seqIndex !== -1) updVals.push(seqValue);
               const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-              const whereClause =
-                seqIndex !== -1
-                  ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})`
-                  : "";
+
               const updateResult = await tx.unsafe(
-                `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
+                `UPDATE ${table}
+                 SET ${sets}${sets ? "," : ""} updated_seq = coalesce(updated_seq, 0) + 1
+                 WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL`,
                 updVals,
               );
 
               const updatedCount = (updateResult as any).count ?? 0;
               if (updatedCount === 0) {
+                const bsUpdates = cols
+                  .filter((k) => k !== "id" && k !== "tenant_id" && k !== "updated_seq")
+                  .map((k) => `"${k}" = EXCLUDED."${k}"`)
+                  .join(", ");
+
                 await tx.unsafe(
                   `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-                   ON CONFLICT (id) DO UPDATE SET ${updates}
-                   WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+                   ON CONFLICT (id) DO UPDATE SET ${bsUpdates}${bsUpdates ? "," : ""} updated_seq = coalesce(${table}.updated_seq, 0) + 1`,
                   vals,
                 );
               }
@@ -338,6 +338,19 @@ powersyncRoutes.post("/upload", async (c: any) => {
             }
           } catch (err: any) {
             if (err.code === "23505") {
+              if (table === "business_settings" || table === "printer_settings") {
+                const updCols = cols.filter((k) => k !== "tenant_id" && k !== "id" && k !== "updated_seq");
+                const updVals = updCols.map((k) => data[k]);
+                updVals.push(tenantId);
+                const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+                await tx.unsafe(
+                  `UPDATE ${table}
+                   SET ${sets}${sets ? "," : ""} updated_seq = coalesce(updated_seq, 0) + 1
+                   WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL`,
+                  updVals,
+                );
+                continue;
+              }
               if (table === "discounts" && typeof data.name === "string" && data.name.trim()) {
                 const existing = (await tx.unsafe(
                   `SELECT id FROM discounts WHERE tenant_id = $1 AND deleted_at IS NULL AND lower(name) = lower($2) LIMIT 1`,
