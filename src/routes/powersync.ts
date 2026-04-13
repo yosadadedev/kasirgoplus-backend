@@ -303,28 +303,28 @@ powersyncRoutes.post("/upload", async (c: any) => {
 
           try {
             if (table === "business_settings" || table === "printer_settings") {
-              const updCols = cols.filter((k) => k !== "tenant_id" && k !== "id" && k !== "updated_seq");
+              const seqIndex = cols.indexOf("updated_seq");
+              const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
+              const updCols = cols.filter((k) => k !== "tenant_id");
               const updVals = updCols.map((k) => data[k]);
               updVals.push(tenantId);
+              if (seqIndex !== -1) updVals.push(seqValue);
               const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-
+              const whereClause =
+                seqIndex !== -1
+                  ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})`
+                  : "";
               const updateResult = await tx.unsafe(
-                `UPDATE ${table}
-                 SET ${sets}${sets ? "," : ""} updated_seq = coalesce(updated_seq, 0) + 1
-                 WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL`,
+                `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
                 updVals,
               );
 
               const updatedCount = (updateResult as any).count ?? 0;
               if (updatedCount === 0) {
-                const bsUpdates = cols
-                  .filter((k) => k !== "id" && k !== "tenant_id" && k !== "updated_seq")
-                  .map((k) => `"${k}" = EXCLUDED."${k}"`)
-                  .join(", ");
-
                 await tx.unsafe(
                   `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-                   ON CONFLICT (id) DO UPDATE SET ${bsUpdates}${bsUpdates ? "," : ""} updated_seq = coalesce(${table}.updated_seq, 0) + 1`,
+                   ON CONFLICT (id) DO UPDATE SET ${updates}
+                   WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
                   vals,
                 );
               }
@@ -338,48 +338,6 @@ powersyncRoutes.post("/upload", async (c: any) => {
             }
           } catch (err: any) {
             if (err.code === "23505") {
-              if (table === "business_settings" || table === "printer_settings") {
-                const updCols = cols.filter((k) => k !== "tenant_id" && k !== "id" && k !== "updated_seq");
-                const updVals = updCols.map((k) => data[k]);
-                updVals.push(tenantId);
-                const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-                await tx.unsafe(
-                  `UPDATE ${table}
-                   SET ${sets}${sets ? "," : ""} updated_seq = coalesce(updated_seq, 0) + 1
-                   WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL`,
-                  updVals,
-                );
-                continue;
-              }
-              if (table === "discounts" && typeof data.name === "string" && data.name.trim()) {
-                const existing = (await tx.unsafe(
-                  `SELECT id FROM discounts WHERE tenant_id = $1 AND deleted_at IS NULL AND lower(name) = lower($2) LIMIT 1`,
-                  [tenantId, data.name.trim()],
-                )) as any[];
-                const existingId = existing?.[0]?.id ? String(existing[0].id) : null;
-                if (existingId) {
-                  await tx.unsafe(
-                    `UPDATE discounts
-                     SET type = COALESCE($1, type),
-                         value = COALESCE($2, value),
-                         is_active = COALESCE($3, is_active),
-                         updated_at = COALESCE($4, updated_at),
-                         updated_by = COALESCE($5, updated_by),
-                         updated_seq = coalesce(updated_seq, 0) + 1
-                     WHERE id = $6 AND tenant_id = $7`,
-                    [
-                      data.type ?? null,
-                      data.value ?? null,
-                      data.is_active ?? null,
-                      data.updated_at ?? null,
-                      data.updated_by ?? null,
-                      existingId,
-                      tenantId,
-                    ],
-                  );
-                  continue;
-                }
-              }
               console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PUT.`);
               continue;
             }
@@ -413,21 +371,6 @@ powersyncRoutes.post("/upload", async (c: any) => {
             }
           } catch (err: any) {
             if (err.code === "23505") {
-              if (table === "discounts" && typeof (op.data as any)?.name === "string" && (op.data as any).name.trim()) {
-                const name = (op.data as any).name.trim();
-                const existing = (await tx.unsafe(
-                  `SELECT id FROM discounts WHERE tenant_id = $1 AND deleted_at IS NULL AND lower(name) = lower($2) LIMIT 1`,
-                  [tenantId, name],
-                )) as any[];
-                const existingId = existing?.[0]?.id ? String(existing[0].id) : null;
-                if (existingId) {
-                  await tx.unsafe(
-                    `UPDATE discounts SET ${sets}, updated_seq = coalesce(updated_seq, 0) + 1 WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
-                    [...vals, existingId, tenantId],
-                  );
-                  continue;
-                }
-              }
               console.warn(`[PowerSync] Unique constraint violation on table ${table} for id ${op.id}. Ignoring PATCH.`);
               continue;
             }
@@ -440,13 +383,11 @@ powersyncRoutes.post("/upload", async (c: any) => {
     return c.json({ ok: true });
   } catch (err: any) {
     const pgCode = typeof err?.code === "string" ? err.code : null;
-    const pgConstraint = typeof err?.constraint === "string" ? err.constraint : null;
-    const pgTable = typeof err?.table === "string" ? err.table : null;
     if (pgCode === "23503") return c.json({ error: "REFERENCE_NOT_FOUND", pgCode }, 409);
     if (pgCode === "42P01") return c.json({ error: "DB_TABLE_MISSING", pgCode }, 500);
     if (pgCode === "23502") return c.json({ error: "NOT_NULL_VIOLATION", pgCode }, 400);
     if (pgCode === "23514") return c.json({ error: "CHECK_VIOLATION", pgCode }, 400);
     console.error("PowerSync upload failed:", err);
-    return c.json({ error: "POWERSYNC_UPLOAD_FAILED", pgCode, pgConstraint, pgTable }, 500);
+    return c.json({ error: "POWERSYNC_UPLOAD_FAILED", pgCode }, 500);
   }
 });
