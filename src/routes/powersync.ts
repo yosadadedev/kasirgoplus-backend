@@ -150,6 +150,8 @@ const allowedColumns: Record<string, Set<string>> = {
     "business_phone",
     "business_email",
     "business_city",
+    "operational_open_time",
+    "operational_close_time",
     "tax_rate",
     "currency",
     "logo",
