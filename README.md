@@ -138,6 +138,10 @@ Requires bearer access token + permission `canManageCashiers`.
 - `PATCH /v1/users/:id`
 - `POST /v1/users/:id/revoke-sessions`
 
+### Business Settings
+- `GET /v1/business-settings`
+- `PATCH /v1/business-settings` (owner/manager only)
+
 ### Deploy VPS backend (pull + rebuild + migrate) 
 - `cd ~/kasirgoplus-backend`
 - `git pull`
