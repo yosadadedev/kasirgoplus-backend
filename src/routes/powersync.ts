@@ -12,7 +12,6 @@ const OpSchema = z.object({
     "expenses",
     "customers",
     "discounts",
-    "business_settings",
     "printer_settings",
   ]),
   id: z.string(),
@@ -142,35 +141,6 @@ const allowedColumns: Record<string, Set<string>> = {
     "deleted_at",
     "updated_seq",
   ]),
-  business_settings: new Set([
-    "id",
-    "tenant_id",
-    "business_name",
-    "business_address",
-    "business_phone",
-    "business_email",
-    "business_city",
-    "operational_open_time",
-    "operational_close_time",
-    "tax_rate",
-    "currency",
-    "logo",
-    "loyalty_per_amount",
-    "loyalty_base_amount",
-    "loyalty_points_per_base",
-    "loyalty_rounding_mode",
-    "loyalty_point_value",
-    "vip_loyalty_base_amount",
-    "vip_loyalty_points_per_base",
-    "wholesale_loyalty_base_amount",
-    "wholesale_loyalty_points_per_base",
-    "created_at",
-    "updated_at",
-    "created_by",
-    "updated_by",
-    "deleted_at",
-    "updated_seq",
-  ]),
   printer_settings: new Set([
     "id",
     "tenant_id",
@@ -284,16 +254,12 @@ powersyncRoutes.post("/upload", async (c: any) => {
       const table = op.table;
       const data = pickAllowed(table, op.data ?? {});
       const canonicalId =
-        table === "business_settings"
-          ? `business_${tenantId}`
-          : table === "printer_settings"
-            ? `printer_${tenantId}`
-            : op.id;
+        table === "printer_settings" ? `printer_${tenantId}` : op.id;
       data.id = canonicalId;
       data.tenant_id = tenantId;
 
       if (op.op === "DELETE") {
-        if (table === "business_settings" || table === "printer_settings") {
+        if (table === "printer_settings") {
           await tx.unsafe(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
         } else {
           await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
@@ -312,7 +278,7 @@ powersyncRoutes.post("/upload", async (c: any) => {
           .map((k) => `"${k}" = EXCLUDED."${k}"`)
           .join(", ");
 
-        if (table === "business_settings" || table === "printer_settings") {
+        if (table === "printer_settings") {
           const seqIndex = cols.indexOf("updated_seq");
           const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
           const updCols = cols.filter((k) => k !== "tenant_id");
@@ -358,7 +324,7 @@ powersyncRoutes.post("/upload", async (c: any) => {
           ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
           : "";
 
-        if (table === "business_settings" || table === "printer_settings") {
+        if (table === "printer_settings") {
           vals.push(tenantId);
           await tx.unsafe(
             `UPDATE ${table} SET ${sets} WHERE tenant_id = $${cols.length + 1} AND deleted_at IS NULL ${whereClause}`,
