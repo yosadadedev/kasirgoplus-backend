@@ -12,7 +12,6 @@ const OpSchema = z.object({
     "expenses",
     "customers",
     "discounts",
-    "printer_settings",
   ]),
   id: z.string(),
   data: z.record(z.any()).optional(),
@@ -141,32 +140,6 @@ const allowedColumns: Record<string, Set<string>> = {
     "deleted_at",
     "updated_seq",
   ]),
-  printer_settings: new Set([
-    "id",
-    "tenant_id",
-    "printer_name",
-    "printer_ip",
-    "printer_port",
-    "paper_size",
-    "print_logo",
-    "printer_logo",
-    "print_customer_copy",
-    "receipt_header",
-    "receipt_footer",
-    "show_tax",
-    "show_payment_method",
-    "show_watermark",
-    "show_sequence_number",
-    "show_table_number",
-    "last_connected_device_address",
-    "last_connected_device_name",
-    "created_at",
-    "updated_at",
-    "created_by",
-    "updated_by",
-    "deleted_at",
-    "updated_seq",
-  ]),
 };
 
 const booleanColumns: Record<string, Set<string>> = {
@@ -176,15 +149,6 @@ const booleanColumns: Record<string, Set<string>> = {
   expenses: new Set([]),
   customers: new Set(["is_active"]),
   discounts: new Set(["is_active"]),
-  printer_settings: new Set([
-    "print_logo",
-    "print_customer_copy",
-    "show_tax",
-    "show_payment_method",
-    "show_watermark",
-    "show_sequence_number",
-    "show_table_number",
-  ]),
 };
 
 const jsonColumns: Record<string, Set<string>> = {
@@ -253,17 +217,12 @@ powersyncRoutes.post("/upload", async (c: any) => {
     for (const op of body.crud) {
       const table = op.table;
       const data = pickAllowed(table, op.data ?? {});
-      const canonicalId =
-        table === "printer_settings" ? `printer_${tenantId}` : op.id;
+      const canonicalId = op.id;
       data.id = canonicalId;
       data.tenant_id = tenantId;
 
       if (op.op === "DELETE") {
-        if (table === "printer_settings") {
-          await tx.unsafe(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-        } else {
-          await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
-        }
+        await tx.unsafe(`DELETE FROM ${table} WHERE id = $1 AND tenant_id = $2`, [op.id, tenantId]);
         continue;
       }
 
@@ -278,37 +237,12 @@ powersyncRoutes.post("/upload", async (c: any) => {
           .map((k) => `"${k}" = EXCLUDED."${k}"`)
           .join(", ");
 
-        if (table === "printer_settings") {
-          const seqIndex = cols.indexOf("updated_seq");
-          const seqValue = seqIndex !== -1 ? vals[seqIndex] : null;
-          const updCols = cols.filter((k) => k !== "tenant_id");
-          const updVals = updCols.map((k) => data[k]);
-          updVals.push(tenantId);
-          if (seqIndex !== -1) updVals.push(seqValue);
-          const sets = updCols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-          const whereClause = seqIndex !== -1 ? `AND (updated_seq IS NULL OR $${updCols.length + 2} IS NULL OR updated_seq <= $${updCols.length + 2})` : "";
-          const updateResult = await tx.unsafe(
-            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${updCols.length + 1} AND deleted_at IS NULL ${whereClause}`,
-            updVals,
-          );
-
-          const updatedCount = (updateResult as any).count ?? 0;
-          if (updatedCount === 0) {
-            await tx.unsafe(
-              `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-               ON CONFLICT (id) DO UPDATE SET ${updates}
-               WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
-              vals,
-            );
-          }
-        } else {
-          await tx.unsafe(
-            `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
-             ON CONFLICT (id) DO UPDATE SET ${updates}
-             WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
-            vals,
-          );
-        }
+        await tx.unsafe(
+          `INSERT INTO ${table} (${colSql}) VALUES (${placeholders})
+           ON CONFLICT (id) DO UPDATE SET ${updates}
+           WHERE ${table}.updated_seq IS NULL OR EXCLUDED.updated_seq IS NULL OR ${table}.updated_seq <= EXCLUDED.updated_seq`,
+          vals,
+        );
         continue;
       }
 
@@ -324,19 +258,11 @@ powersyncRoutes.post("/upload", async (c: any) => {
           ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
           : "";
 
-        if (table === "printer_settings") {
-          vals.push(tenantId);
-          await tx.unsafe(
-            `UPDATE ${table} SET ${sets} WHERE tenant_id = $${cols.length + 1} AND deleted_at IS NULL ${whereClause}`,
-            vals,
-          );
-        } else {
-          vals.push(op.id, tenantId);
-          await tx.unsafe(
-            `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
-            vals,
-          );
-        }
+        vals.push(op.id, tenantId);
+        await tx.unsafe(
+          `UPDATE ${table} SET ${sets} WHERE id = $${cols.length + 1} AND tenant_id = $${cols.length + 2} ${whereClause}`,
+          vals,
+        );
         continue;
       }
     }

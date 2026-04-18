@@ -16,7 +16,7 @@ const UpdateBusinessSettingsSchema = z
     operationalOpenTime: TimeHHmm.optional(),
     operationalCloseTime: TimeHHmm.optional(),
   })
-  .strict();
+  .passthrough();
 
 export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
   .use("*", requireAuth)
