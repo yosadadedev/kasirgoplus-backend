@@ -83,7 +83,6 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
   })
   .patch("/", async (c: any) => {
     const authUser = c.get("authUser")!;
-    if (authUser.role === "cashier") return c.json({ error: "FORBIDDEN" }, 403);
     const input = PrinterSettingsPatchSchema.parse(await c.req.json());
     if (Object.keys(input).length === 0) return c.json({ error: "NO_CHANGES" }, 400);
 

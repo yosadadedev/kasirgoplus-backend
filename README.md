@@ -157,7 +157,7 @@ Requires bearer access token + permission `canManageCashiers`.
 
 ### Printer Settings
 - `GET /v1/printer-settings`
-- `PATCH /v1/printer-settings` (owner/manager only)
+- `PATCH /v1/printer-settings`
   - Payload (JSON body, semua optional, kirim yang berubah saja):
     - `printerName`: string
     - `printerIP`: string | null
@@ -178,7 +178,6 @@ Requires bearer access token + permission `canManageCashiers`.
   - Response:
     - `{ printer: { printerName, printerIP?, printerPort?, paperSize, printLogo, printerLogo?, printCustomerCopy, receiptHeader, receiptFooter, showTax, showPaymentMethod, showWatermark, showSequenceNumber, showTableNumber, lastConnectedDeviceAddress?, lastConnectedDeviceName? } }`
   - Error codes:
-    - `403 { error: "FORBIDDEN" }` (cashier)
     - `400 { error: "NO_CHANGES" }` (payload kosong)
 
 ### Deploy VPS backend (pull + rebuild + migrate) 
