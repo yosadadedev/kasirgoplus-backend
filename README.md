@@ -141,6 +141,45 @@ Requires bearer access token + permission `canManageCashiers`.
 ### Business Settings
 - `GET /v1/business-settings`
 - `PATCH /v1/business-settings` (owner/manager only)
+  - Payload (JSON body, semua optional, kirim yang berubah saja):
+    - `businessName`: string
+    - `businessAddress`: string
+    - `businessPhone`: string
+    - `businessEmail`: string (format email)
+    - `businessCity`: string
+    - `operationalOpenTime`: string `"HH:mm"` (contoh `"08:00"`)
+    - `operationalCloseTime`: string `"HH:mm"` (contoh `"22:00"`)
+  - Response:
+    - `{ business: { businessName, businessAddress, businessPhone, businessEmail, businessCity, operationalOpenTime, operationalCloseTime, taxRate, currency, logo? } }`
+  - Error codes:
+    - `403 { error: "FORBIDDEN" }` (cashier)
+    - `400 { error: "NO_CHANGES" }` (payload kosong)
+
+### Printer Settings
+- `GET /v1/printer-settings`
+- `PATCH /v1/printer-settings` (owner/manager only)
+  - Payload (JSON body, semua optional, kirim yang berubah saja):
+    - `printerName`: string
+    - `printerIP`: string | null
+    - `printerPort`: number | null
+    - `paperSize`: `"58mm"` | `"80mm"`
+    - `printLogo`: boolean
+    - `printerLogo`: string | null
+    - `printCustomerCopy`: boolean
+    - `receiptHeader`: string
+    - `receiptFooter`: string
+    - `showTax`: boolean
+    - `showPaymentMethod`: boolean
+    - `showWatermark`: boolean
+    - `showSequenceNumber`: boolean
+    - `showTableNumber`: boolean
+    - `lastConnectedDeviceAddress`: string | null
+    - `lastConnectedDeviceName`: string | null
+  - Response:
+    - `{ printer: { printerName, printerIP?, printerPort?, paperSize, printLogo, printerLogo?, printCustomerCopy, receiptHeader, receiptFooter, showTax, showPaymentMethod, showWatermark, showSequenceNumber, showTableNumber, lastConnectedDeviceAddress?, lastConnectedDeviceName? } }`
+  - Error codes:
+    - `403 { error: "FORBIDDEN" }` (cashier)
+    - `400 { error: "NO_CHANGES" }` (payload kosong)
 
 ### Deploy VPS backend (pull + rebuild + migrate) 
 - `cd ~/kasirgoplus-backend`

@@ -8,7 +8,7 @@ const PrinterSettingsPatchSchema = z
   .object({
     printerName: z.string().optional(),
     printerIP: z.string().nullable().optional(),
-    printerPort: z.number().int().nullable().optional(),
+    printerPort: z.coerce.number().int().nullable().optional(),
     paperSize: z.enum(["58mm", "80mm"]).optional(),
     printLogo: z.boolean().optional(),
     printerLogo: z.string().nullable().optional(),
