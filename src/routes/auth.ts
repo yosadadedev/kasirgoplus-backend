@@ -48,7 +48,7 @@ const RequestResetSchema = z.object({
 });
 
 const ResetPasswordSchema = z.object({
-  token: z.string().min(10),
+  token: z.string().regex(/^\d{6}$/),
   newPassword: z.string().min(6),
 });
 
@@ -106,9 +106,11 @@ const normalizePermissions = (role: Role, perms: Permissions | null) => {
   return out;
 };
 
-const generateOpaqueToken = (byteLen: number) => {
-  const bytes = crypto.getRandomValues(new Uint8Array(byteLen));
-  return base64Url(bytes);
+const generateOtp6 = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const view = new DataView(bytes.buffer);
+  const n = view.getUint32(0, true) % 1000000;
+  return String(n).padStart(6, "0");
 };
 
 export const authRoutes = new Hono()
@@ -358,7 +360,7 @@ export const authRoutes = new Hono()
       return c.json({ ok: true });
     }
 
-    const token = generateOpaqueToken(48);
+    const token = generateOtp6();
     const tokenHash = await sha256Hex(token);
     const expiresAt = new Date(Date.now() + env.PASSWORD_RESET_TOKEN_TTL_SECONDS * 1000);
 
@@ -373,11 +375,11 @@ export const authRoutes = new Hono()
         await transporter.sendMail({
           from: getMailFrom(),
           to: email,
-          subject: "Reset Password KasirGo+",
+          subject: "Kode OTP Reset Password KasirGo+",
           text:
-            "Berikut token untuk reset password KasirGo+:\n\n" +
+            "Berikut Kode OTP (6 digit) untuk reset password KasirGo+:\n\n" +
             `${token}\n\n` +
-            `Token ini berlaku ${Math.floor(env.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)} menit.\n\n` +
+            `OTP ini berlaku ${Math.floor(env.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)} menit.\n\n` +
             "Jika Anda tidak merasa meminta reset password, abaikan email ini.",
         });
         logSmtp("SEND_OK", { to: email });
