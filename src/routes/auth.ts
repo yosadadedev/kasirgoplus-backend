@@ -88,6 +88,16 @@ const getMailFrom = () => {
   return from || "KasirGo+ <no-reply@kasirgoplus.my.id>";
 };
 
+const normalizeEmail = (v: unknown) => {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+};
+
+const logSmtp = (event: string, data?: Record<string, unknown>) => {
+  if (!env.SMTP_DEBUG) return;
+  const payload = data ? JSON.stringify(data) : "";
+  console.log(`[SMTP] ${event}${payload ? ` ${payload}` : ""}`);
+};
+
 const normalizePermissions = (role: Role, perms: Permissions | null) => {
   const base = roleDefaultPermissions(role);
   const merged = { ...base, ...(perms ?? {}) } as Permissions;
@@ -104,9 +114,10 @@ const generateOpaqueToken = (byteLen: number) => {
 export const authRoutes = new Hono()
   .post("/register", async (c: any) => {
     const input = RegisterSchema.parse(await c.req.json());
+    const email = normalizeEmail(input.email);
 
     const existing = await sql<{ id: string }[]>`
-      SELECT id FROM users WHERE email = ${input.email} LIMIT 1
+      SELECT id FROM users WHERE lower(email) = ${email} LIMIT 1
     `;
     if (existing[0]) return c.json({ error: "EMAIL_TAKEN" }, 409);
 
@@ -142,7 +153,7 @@ export const authRoutes = new Hono()
         }[]
       >`
         INSERT INTO users (tenant_id, email, name, phone, role, status, password_hash, permissions)
-        VALUES (${tenantId}, ${input.email}, ${input.ownerName}, ${input.phone ?? null}, 'owner', 'active', ${passwordHash}, ${tx.json(ownerPerms)})
+        VALUES (${tenantId}, ${email}, ${input.ownerName}, ${input.phone ?? null}, 'owner', 'active', ${passwordHash}, ${tx.json(ownerPerms)})
         RETURNING id, tenant_id, email, name, role, status, permissions
       `) as unknown as {
         id: string;
@@ -187,10 +198,11 @@ export const authRoutes = new Hono()
   })
   .post("/login", async (c: any) => {
     const input = LoginSchema.parse(await c.req.json());
+    const email = normalizeEmail(input.email);
     const userRows = await sql<DbUserRow[]>`
       SELECT id, tenant_id, email, name, role, status, password_hash, pin_hash, permissions
       FROM users
-      WHERE email = ${input.email}
+      WHERE lower(email) = ${email}
       LIMIT 1
     `;
     const user = userRows[0];
@@ -332,15 +344,19 @@ export const authRoutes = new Hono()
   })
   .post("/request-password-reset", async (c: any) => {
     const input = RequestResetSchema.parse(await c.req.json());
+    const email = normalizeEmail(input.email);
 
     const rows = await sql<{ id: string; tenant_id: string }[]>`
       SELECT id, tenant_id
       FROM users
-      WHERE email = ${input.email} AND status = 'active'
+      WHERE lower(email) = ${email} AND status = 'active'
       LIMIT 1
     `;
     const user = rows[0];
-    if (!user) return c.json({ ok: true });
+    if (!user) {
+      logSmtp("SKIP_USER_NOT_FOUND", { to: email });
+      return c.json({ ok: true });
+    }
 
     const token = generateOpaqueToken(48);
     const tokenHash = await sha256Hex(token);
@@ -356,7 +372,7 @@ export const authRoutes = new Hono()
       try {
         await transporter.sendMail({
           from: getMailFrom(),
-          to: input.email,
+          to: email,
           subject: "Reset Password KasirGo+",
           text:
             "Berikut token untuk reset password KasirGo+:\n\n" +
@@ -364,7 +380,17 @@ export const authRoutes = new Hono()
             `Token ini berlaku ${Math.floor(env.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)} menit.\n\n` +
             "Jika Anda tidak merasa meminta reset password, abaikan email ini.",
         });
-      } catch {}
+        logSmtp("SEND_OK", { to: email });
+      } catch (e: any) {
+        logSmtp("SEND_FAILED", {
+          to: email,
+          message: typeof e?.message === "string" ? e.message : String(e),
+          code: typeof e?.code === "string" ? e.code : undefined,
+          responseCode: typeof e?.responseCode === "number" ? e.responseCode : undefined,
+        });
+      }
+    } else {
+      logSmtp("SKIP_NO_CONFIG", { to: email });
     }
 
     return c.json(env.RETURN_RESET_TOKEN ? { ok: true, resetToken: token } : { ok: true });
