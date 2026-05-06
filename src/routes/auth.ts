@@ -6,6 +6,7 @@ import { sha256Hex } from "../auth/crypto";
 import { signAccessToken } from "../auth/jwt";
 import { hashSecret, verifySecret } from "../auth/password";
 import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } from "../rbac";
+import nodemailer from "nodemailer";
 
 const base64Url = (bytes: Uint8Array) => {
   const b64 = Buffer.from(bytes).toString("base64");
@@ -61,6 +62,30 @@ type DbUserRow = {
   password_hash: string | null;
   pin_hash: string | null;
   permissions: Permissions | null;
+};
+
+let mailer: nodemailer.Transporter | null = null;
+const getMailer = () => {
+  const host = (env.SMTP_HOST || "").trim();
+  const user = (env.SMTP_USER || "").trim();
+  const pass = env.SMTP_PASS || "";
+  if (!host || !user || !pass) return null;
+  if (mailer) return mailer;
+
+  const port = typeof env.SMTP_PORT === "number" ? env.SMTP_PORT : 465;
+  const secure = typeof env.SMTP_SECURE === "boolean" ? env.SMTP_SECURE : port === 465;
+  mailer = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+  return mailer;
+};
+
+const getMailFrom = () => {
+  const from = (env.SMTP_FROM || "").trim();
+  return from || "KasirGo+ <no-reply@kasirgoplus.my.id>";
 };
 
 const normalizePermissions = (role: Role, perms: Permissions | null) => {
@@ -325,6 +350,22 @@ export const authRoutes = new Hono()
       INSERT INTO password_reset_tokens (tenant_id, user_id, token_hash, expires_at)
       VALUES (${user.tenant_id}, ${user.id}, ${tokenHash}, ${expiresAt})
     `;
+
+    const transporter = getMailer();
+    if (transporter) {
+      try {
+        await transporter.sendMail({
+          from: getMailFrom(),
+          to: input.email,
+          subject: "Reset Password KasirGo+",
+          text:
+            "Berikut token untuk reset password KasirGo+:\n\n" +
+            `${token}\n\n` +
+            `Token ini berlaku ${Math.floor(env.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)} menit.\n\n` +
+            "Jika Anda tidak merasa meminta reset password, abaikan email ini.",
+        });
+      } catch {}
+    }
 
     return c.json(env.RETURN_RESET_TOKEN ? { ok: true, resetToken: token } : { ok: true });
   })
