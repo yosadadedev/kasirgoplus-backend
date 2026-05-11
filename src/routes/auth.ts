@@ -221,13 +221,6 @@ export const authRoutes = new Hono()
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = await sha256Hex(refreshToken);
 
-    // Single Device Login: Revoke all existing active sessions for this user
-    await sql`
-      UPDATE device_sessions 
-      SET revoked_at = now() 
-      WHERE user_id = ${user.id} AND revoked_at IS NULL
-    `;
-
     const sessionRows = (await sql<{ id: string }[]>`
       INSERT INTO device_sessions (tenant_id, user_id, device_id, refresh_token_hash)
       VALUES (${user.tenant_id}, ${user.id}, ${input.deviceId ?? null}, ${refreshTokenHash})
