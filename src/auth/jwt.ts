@@ -9,17 +9,29 @@ export type AccessTokenClaims = {
   sid?: string;
   role: JwtRole;
   permissions?: Record<string, boolean>;
+  retention_since?: string;
 };
 
 const secretKey = new TextEncoder().encode(env.JWT_SECRET);
 
+const RETENTION_DAYS = 30;
+
+const toPowerSyncTimestamp = (d: Date) => {
+  return d.toISOString().replace("T", " ");
+};
+
 export const signAccessToken = async (claims: AccessTokenClaims) => {
   const now = Math.floor(Date.now() / 1000);
+  const retentionSince =
+    typeof claims.retention_since === "string" && claims.retention_since
+      ? claims.retention_since
+      : toPowerSyncTimestamp(new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000));
   return new SignJWT({
     tenant_id: claims.tenant_id,
     sid: claims.sid,
     role: claims.role,
     permissions: claims.permissions,
+    retention_since: retentionSince,
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT", kid: env.POWERSYNC_JWT_KID })
     .setSubject(claims.sub)
@@ -38,5 +50,6 @@ export const verifyAccessToken = async (token: string) => {
     sid: payload.sid ? String(payload.sid) : undefined,
     role: payload.role as JwtRole,
     permissions: (payload.permissions ?? undefined) as Record<string, boolean> | undefined,
+    retention_since: payload.retention_since ? String(payload.retention_since) : undefined,
   } satisfies AccessTokenClaims;
 };
