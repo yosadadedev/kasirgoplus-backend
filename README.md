@@ -131,17 +131,6 @@ JWT_SECRET='minimal_16_characters_secret' bun run scenario
 - `PATCH /v1/products/:id`
 - `DELETE /v1/products/:id`
 
-### POS Data (Read-only)
-- `GET /v1/transactions?start=<iso>&end=<iso>&limit=<1..500>&cursor=<iso|id>`
-  - Cursor format: `"<timestamp ISO>|<transaction id>"` (untuk pagination stabil jika timestamp sama)
-  - Response: `{ transactions: [...], nextCursor: string | null }`
-- `GET /v1/expenses?start=<iso>&end=<iso>&limit=<1..1000>`
-  - Response: `{ expenses: [...] }`
-
-### Reports (Aggregate)
-- `GET /v1/reports/summary?start=<iso>&end=<iso>&period=<today|yesterday|week|lastWeek|month|lastMonth|year|custom>`
-  - Response berisi totals + paymentBreakdown + salesData + top/bottom/profit products
-
 ### Users (RBAC)
 Requires bearer access token + permission `canManageCashiers`.
 - `GET /v1/users`
