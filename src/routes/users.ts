@@ -88,10 +88,12 @@ export const usersRoutes = new Hono<{ Variables: HonoVariables }>()
     const name = input.name.trim();
     const phone = input.phone?.trim();
 
+    await sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
+
     const existing = await sql<{ id: string }[]>`
       SELECT id
       FROM users
-      WHERE tenant_id = ${authUser.tenantId} AND lower(email) = ${email}
+      WHERE lower(email) = ${email}
       LIMIT 1
     `;
     if (existing[0]) return c.json({ error: "EMAIL_TAKEN" }, 409);
