@@ -75,6 +75,45 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
       },
     });
   })
+  .delete("/", async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const rows = (await sql<DbUserRow[]>`
+      SELECT id, tenant_id, email, name, phone, role, status, password_hash, permissions
+      FROM users
+      WHERE id = ${authUser.id} AND tenant_id = ${authUser.tenantId}
+      LIMIT 1
+    `) as unknown as DbUserRow[];
+    const user = rows[0];
+    if (!user) return c.json({ error: "NOT_FOUND" }, 404);
+
+    const deletedScope = await sql.begin(async (tx: any) => {
+      if (user.role === "owner") {
+        await tx`
+          DELETE FROM tenants
+          WHERE id = ${user.tenant_id}
+        `;
+        return "tenant" as const;
+      }
+
+      await tx`
+        DELETE FROM users
+        WHERE id = ${user.id} AND tenant_id = ${user.tenant_id}
+      `;
+      return "user" as const;
+    });
+
+    console.log(
+      JSON.stringify({
+        event: "me.delete",
+        tenantId: user.tenant_id,
+        userId: user.id,
+        role: user.role,
+        deletedScope,
+      }),
+    );
+
+    return c.json({ ok: true, deletedScope });
+  })
   .patch("/", async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = UpdateProfileSchema.parse(await c.req.json());
