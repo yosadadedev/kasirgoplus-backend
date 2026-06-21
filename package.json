@@ -7,6 +7,7 @@
     "start": "bun src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "migrate": "bun src/scripts/migrate.ts",
+    "recent-sync-flags": "bun src/scripts/updateRecentSyncFlags.ts",
     "seed": "bun src/scripts/seed.ts",
     "smoke": "bun src/scripts/smoke.ts",
     "scenario": "bun src/scripts/scenario.ts"

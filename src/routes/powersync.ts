@@ -159,6 +159,13 @@ const jsonColumns: Record<string, Set<string>> = {
   customers: new Set([]),
 };
 
+const RECENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+const isWithinRecentWindow = (value: unknown) => {
+  const ts = new Date(typeof value === "string" || value instanceof Date ? value : "").getTime();
+  return Number.isFinite(ts) && ts >= Date.now() - RECENT_WINDOW_MS;
+};
+
 const normalizeValue = (table: string, col: string, value: any) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -194,6 +201,35 @@ const pickAllowed = (table: string, data: Record<string, any>) => {
   return out;
 };
 
+const applyRecentSyncFlag = (
+  op: "PUT" | "PATCH" | "DELETE",
+  table: string,
+  data: Record<string, any>,
+) => {
+  if (table === "transactions") {
+    if (op === "PUT") {
+      data.sync_recent_mobile = isWithinRecentWindow(data.timestamp ?? new Date().toISOString());
+    } else if (Object.prototype.hasOwnProperty.call(data, "timestamp")) {
+      data.sync_recent_mobile = isWithinRecentWindow(data.timestamp);
+    }
+    return data;
+  }
+
+  if (table === "expenses") {
+    const deleted = data.deleted_at != null;
+    if (op === "PUT") {
+      data.sync_recent_mobile =
+        !deleted && isWithinRecentWindow(data.date ?? new Date().toISOString());
+    } else if (deleted) {
+      data.sync_recent_mobile = false;
+    } else if (Object.prototype.hasOwnProperty.call(data, "date")) {
+      data.sync_recent_mobile = isWithinRecentWindow(data.date);
+    }
+  }
+
+  return data;
+};
+
 export const powersyncRoutes = new Hono();
 
 powersyncRoutes.use("*", requireAuth);
@@ -216,7 +252,7 @@ powersyncRoutes.post("/upload", async (c: any) => {
   await sql.begin(async (tx) => {
     for (const op of body.crud) {
       const table = op.table;
-      const data = pickAllowed(table, op.data ?? {});
+      const data = applyRecentSyncFlag(op.op, table, pickAllowed(table, op.data ?? {}));
       const canonicalId = op.id;
       data.id = canonicalId;
       data.tenant_id = tenantId;
