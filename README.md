@@ -196,3 +196,10 @@ Requires bearer access token + permission `canManageCashiers`.
 ### Cek Log Migration
 - `sudo docker exec -it kasirgoplus-postgres psql -U postgres -d kasirgoplus \
   -c "SELECT id, applied_at FROM public.migrations ORDER BY applied_at DESC;"
+
+
+### Cek Kesehatan VPS
+- htop
+- uptime
+- free -h
+- df -h

@@ -10,6 +10,7 @@ import { productsRoutes } from "./routes/products";
 import { powersyncRoutes } from "./routes/powersync";
 import { businessSettingsRoutes } from "./routes/businessSettings";
 import { printerSettingsRoutes } from "./routes/printerSettings";
+import { reportsRoutes } from "./routes/reports";
 
 const app = new Hono();
 
@@ -46,6 +47,7 @@ app.route("/v1/categories", categoriesRoutes);
 app.route("/v1/products", productsRoutes);
 app.route("/v1/business-settings", businessSettingsRoutes);
 app.route("/v1/printer-settings", printerSettingsRoutes);
+app.route("/v1/reports", reportsRoutes);
 app.route("/v1/powersync", powersyncRoutes);
 
 export default {
