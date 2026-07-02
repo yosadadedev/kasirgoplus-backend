@@ -5,7 +5,16 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
 import type { HonoVariables } from "../context";
 
-const PaymentMethodSchema = z.enum(["cash", "qris", "transfer", "kasbon"]);
+const PaymentMethodSchema = z.enum([
+  "cash",
+  "qris",
+  "transfer",
+  "kasbon",
+  "gobiz",
+  "shopee",
+  "grab",
+  "lainnya",
+]);
 const FilterTypeSchema = z.enum(["all", "edited", "deleted"]);
 
 const ReportsTransactionsQuerySchema = z.object({
