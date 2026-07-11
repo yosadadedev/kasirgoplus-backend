@@ -11,6 +11,7 @@ import { powersyncRoutes } from "./routes/powersync";
 import { businessSettingsRoutes } from "./routes/businessSettings";
 import { printerSettingsRoutes } from "./routes/printerSettings";
 import { reportsRoutes } from "./routes/reports";
+import { internalAdminRoutes } from "./routes/internalAdmin";
 
 const app = new Hono();
 
@@ -34,7 +35,7 @@ app.use(
   cors({
     origin: "*",
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Internal-Admin-Secret"],
   }),
 );
 
@@ -49,6 +50,7 @@ app.route("/v1/business-settings", businessSettingsRoutes);
 app.route("/v1/printer-settings", printerSettingsRoutes);
 app.route("/v1/reports", reportsRoutes);
 app.route("/v1/powersync", powersyncRoutes);
+app.route("/v1/internal-admin", internalAdminRoutes);
 
 export default {
   port: env.PORT,

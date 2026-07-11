@@ -3,6 +3,7 @@ import { z } from "zod";
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
+  INTERNAL_ADMIN_SECRET: z.string().min(16).optional(),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
   PASSWORD_RESET_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 30),
@@ -23,6 +24,7 @@ const EnvSchema = z.object({
 export const env = EnvSchema.parse({
   DATABASE_URL: Bun.env.DATABASE_URL,
   JWT_SECRET: Bun.env.JWT_SECRET,
+    INTERNAL_ADMIN_SECRET: Bun.env.INTERNAL_ADMIN_SECRET,
   ACCESS_TOKEN_TTL_SECONDS: Bun.env.ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS: Bun.env.REFRESH_TOKEN_TTL_SECONDS,
   PASSWORD_RESET_TOKEN_TTL_SECONDS: Bun.env.PASSWORD_RESET_TOKEN_TTL_SECONDS,
