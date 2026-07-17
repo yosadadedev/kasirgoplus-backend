@@ -4,6 +4,7 @@ import { sql } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
 import type { HonoVariables } from "../context";
+import { deleteProductImageFromR2, uploadProductImageToR2 } from "../services/r2";
 
 const UnitTypeSchema = z.enum(["piece", "weight", "volume"]);
 
@@ -28,6 +29,10 @@ const ProductCreateSchema = z.object({
 });
 
 const ProductUpdateSchema = ProductCreateSchema.partial();
+const ProductImageDeleteSchema = z.object({
+  imageUrl: z.string().url().optional(),
+  imageKey: z.string().min(1).optional(),
+});
 
 const normalizeUnit = (input: {
   unit?: string | null;
@@ -121,6 +126,57 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         updatedAt: r.updated_at,
       })),
     });
+  })
+  .post("/upload-image", requirePermission("canManageProducts"), async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const body = await c.req.parseBody();
+    const file = body.file;
+
+    if (!(file instanceof File)) {
+      return c.json({ error: "INVALID_FILE" }, 400);
+    }
+
+    try {
+      const uploaded = await uploadProductImageToR2({
+        tenantId: authUser.tenantId,
+        file,
+      });
+
+      return c.json(uploaded, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "UPLOAD_FAILED";
+      if (message === "R2_NOT_CONFIGURED") {
+        return c.json({ error: "R2_NOT_CONFIGURED" }, 503);
+      }
+      if (message === "FILE_TOO_LARGE") {
+        return c.json({ error: "FILE_TOO_LARGE" }, 413);
+      }
+      if (
+        message === "INVALID_FILE" ||
+        message === "EMPTY_FILE" ||
+        message === "INVALID_IMAGE_TYPE"
+      ) {
+        return c.json({ error: message }, 400);
+      }
+      throw error;
+    }
+  })
+  .post("/delete-image", requirePermission("canManageProducts"), async (c: any) => {
+    const input = ProductImageDeleteSchema.parse(await c.req.json());
+
+    try {
+      const deleted = await deleteProductImageFromR2(input);
+      return c.json(deleted);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "DELETE_FAILED";
+      if (message === "R2_NOT_CONFIGURED") {
+        return c.json({ error: "R2_NOT_CONFIGURED" }, 503);
+      }
+      if (message === "INVALID_IMAGE_REFERENCE") {
+        return c.json({ error: "INVALID_IMAGE_REFERENCE" }, 400);
+      }
+      throw error;
+    }
   })
   .post("/", requirePermission("canManageProducts"), async (c: any) => {
     const authUser = c.get("authUser")!;
