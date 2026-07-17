@@ -4,7 +4,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
   INTERNAL_ADMIN_SECRET: z.string().min(16).optional(),
-  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
   PASSWORD_RESET_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 30),
   RETURN_RESET_TOKEN: z.coerce.boolean().default(true),
