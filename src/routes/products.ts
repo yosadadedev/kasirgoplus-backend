@@ -71,40 +71,51 @@ const normalizeUnit = (input: {
   return { unit: unitRaw, unitType: "piece" as const, baseUnit: "pcs" as const, unitMultiplier: 1 };
 };
 
-export const productImagePublicRoutes = new Hono().get("/image/*", async (c: any) => {
-    const rawKey = c.req.param("*");
-    const imageKey = typeof rawKey === "string" ? decodeURIComponent(rawKey).trim() : "";
-    if (!imageKey) {
-      return c.json({ error: "INVALID_IMAGE_REFERENCE" }, 400);
-    }
+const PRODUCT_IMAGE_PROXY_PREFIX = "/v1/products/image/";
 
-    try {
-      const image = await getProductImageFromR2(imageKey);
-      return new Response(Buffer.from(image.body), {
-        status: 200,
-        headers: {
-          "Content-Type": image.contentType,
-          "Cache-Control": image.cacheControl,
-        },
-      });
-    } catch (error: any) {
-      const statusCode = error?.$metadata?.httpStatusCode;
-      const message = error instanceof Error ? error.message : "IMAGE_FETCH_FAILED";
-      if (message === "R2_NOT_CONFIGURED") {
-        return c.json({ error: "R2_NOT_CONFIGURED" }, 503);
-      }
-      if (
-        message === "INVALID_IMAGE_REFERENCE" ||
-        message === "IMAGE_NOT_FOUND" ||
-        statusCode === 404 ||
-        error?.name === "NoSuchKey"
-      ) {
-        return c.json({ error: "IMAGE_NOT_FOUND" }, 404);
-      }
-      throw error;
+const getProductImageKeyFromRequest = (requestUrl: string) => {
+  const pathname = new URL(requestUrl).pathname;
+  const prefixIndex = pathname.indexOf(PRODUCT_IMAGE_PROXY_PREFIX);
+  if (prefixIndex < 0) {
+    return "";
+  }
+
+  const rawKey = pathname.slice(prefixIndex + PRODUCT_IMAGE_PROXY_PREFIX.length);
+  return decodeURIComponent(rawKey).trim();
+};
+
+export const productImagePublicRoutes = new Hono().on(["GET", "HEAD"], "/image/*", async (c: any) => {
+  const imageKey = getProductImageKeyFromRequest(c.req.url);
+  if (!imageKey) {
+    return c.json({ error: "INVALID_IMAGE_REFERENCE" }, 400);
+  }
+
+  try {
+    const image = await getProductImageFromR2(imageKey);
+    return new Response(c.req.method === "HEAD" ? null : Buffer.from(image.body), {
+      status: 200,
+      headers: {
+        "Content-Type": image.contentType,
+        "Cache-Control": image.cacheControl,
+      },
+    });
+  } catch (error: any) {
+    const statusCode = error?.$metadata?.httpStatusCode;
+    const message = error instanceof Error ? error.message : "IMAGE_FETCH_FAILED";
+    if (message === "R2_NOT_CONFIGURED") {
+      return c.json({ error: "R2_NOT_CONFIGURED" }, 503);
     }
-  })
-;
+    if (
+      message === "INVALID_IMAGE_REFERENCE" ||
+      message === "IMAGE_NOT_FOUND" ||
+      statusCode === 404 ||
+      error?.name === "NoSuchKey"
+    ) {
+      return c.json({ error: "IMAGE_NOT_FOUND" }, 404);
+    }
+    throw error;
+  }
+});
 
 export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
   .use("*", requireAuth)
