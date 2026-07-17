@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "../env";
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -62,6 +62,18 @@ const createR2Client = () => {
 };
 
 export const getR2ImageKeyFromUrl = (imageUrl: string) => {
+  try {
+    const parsed = new URL(imageUrl);
+    const proxyMarker = "/v1/products/image/";
+    const proxyIndex = parsed.pathname.indexOf(proxyMarker);
+    if (proxyIndex >= 0) {
+      const proxyKey = decodeURIComponent(parsed.pathname.slice(proxyIndex + proxyMarker.length)).trim();
+      if (proxyKey) return proxyKey;
+    }
+  } catch {
+    // Fall through to direct-public-url parsing.
+  }
+
   const config = getRequiredR2Config();
   const normalizedBase = `${config.publicBaseUrl}/`;
   if (!imageUrl.startsWith(normalizedBase)) {
@@ -113,6 +125,32 @@ export const uploadProductImageToR2 = async (input: {
   return {
     imageKey: key,
     imageUrl: `${config.publicBaseUrl}/${key}`,
+  };
+};
+
+export const getProductImageFromR2 = async (imageKey: string) => {
+  const config = getRequiredR2Config();
+  const normalizedKey = imageKey.trim();
+  if (!normalizedKey) {
+    throw new Error("INVALID_IMAGE_REFERENCE");
+  }
+
+  const client = createR2Client();
+  const result = await client.send(
+    new GetObjectCommand({
+      Bucket: config.bucket,
+      Key: normalizedKey,
+    }),
+  );
+
+  if (!result.Body) {
+    throw new Error("IMAGE_NOT_FOUND");
+  }
+
+  return {
+    body: await result.Body.transformToByteArray(),
+    contentType: result.ContentType || "image/jpeg",
+    cacheControl: result.CacheControl || "public, max-age=31536000, immutable",
   };
 };
 
