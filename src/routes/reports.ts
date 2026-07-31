@@ -4,6 +4,7 @@ import { sql } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
 import type { HonoVariables } from "../context";
+import type { AuthUser } from "../context";
 
 const PaymentMethodSchema = z.enum([
   "cash",
@@ -24,6 +25,7 @@ const ReportsTransactionsQuerySchema = z.object({
   cursor: z.string().optional(),
   paymentMethod: PaymentMethodSchema.optional(),
   filterType: FilterTypeSchema.optional().default("all"),
+  userId: z.string().min(1).optional(),
 });
 
 type TransactionRow = {
@@ -102,10 +104,21 @@ const toExpenseDto = (row: ExpenseRow) => ({
   deleted_at: row.deleted_at ?? null,
 });
 
-const buildTransactionWhere = (input: z.infer<typeof ReportsTransactionsQuerySchema>, tenantId: string) => {
+const buildTransactionWhere = (
+  input: z.infer<typeof ReportsTransactionsQuerySchema>,
+  authUser: AuthUser,
+) => {
   const cursor = parseCursor(input.cursor);
   const where: string[] = ["tenant_id = $1", "timestamp >= $2", "timestamp <= $3"];
-  const params: any[] = [tenantId, input.from, input.to];
+  const params: any[] = [authUser.tenantId, input.from, input.to];
+
+  if (authUser.role !== "owner") {
+    where.push(`created_by = $${params.length + 1}`);
+    params.push(authUser.id);
+  } else if (input.userId) {
+    where.push(`created_by = $${params.length + 1}`);
+    params.push(input.userId);
+  }
 
   if (input.filterType === "deleted") {
     where.push("deleted_at IS NOT NULL");
@@ -157,7 +170,7 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
   .get("/transactions", requirePermission("canViewReports"), async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = ReportsTransactionsQuerySchema.parse(c.req.query());
-    const { where, params } = buildTransactionWhere(input, authUser.tenantId);
+    const { where, params } = buildTransactionWhere(input, authUser);
     const limitIndex = params.length + 1;
 
     const rows = await sql.unsafe<TransactionRow[]>(
@@ -197,7 +210,7 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
   .get("/transactions/count", requirePermission("canViewReports"), async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = ReportsTransactionsQuerySchema.omit({ limit: true, cursor: true }).parse(c.req.query());
-    const { where, params } = buildTransactionWhere({ ...input, limit: 200 }, authUser.tenantId);
+    const { where, params } = buildTransactionWhere({ ...input, limit: 200 }, authUser);
 
     const rows = await sql.unsafe<{ c: string | number }[]>(
       `
