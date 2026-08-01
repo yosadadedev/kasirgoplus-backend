@@ -11,6 +11,9 @@ cp .env.example .env
 Catatan:
 - `bun run migrate` hanya butuh `DATABASE_URL`.
 - `JWT_SECRET` dibutuhkan saat menjalankan server (`bun run dev` / `bun run start`) dan harus minimal 16 karakter.
+- Internal admin bisa memakai dua mode yang kompatibel:
+  - `X-Internal-Admin-Secret` untuk server-to-server/internal tooling
+  - bearer token dari `POST /v1/internal-admin/auth/login` bila `ADMIN_EMAIL`, `ADMIN_PASSWORD`, dan `ADMIN_JWT_SECRET` diisi
 
 ## Postgres tanpa Docker (Mac)
 
@@ -179,6 +182,77 @@ Requires bearer access token + permission `canManageCashiers`.
     - `{ printer: { printerName, printerIP?, printerPort?, paperSize, printLogo, printerLogo?, printCustomerCopy, receiptHeader, receiptFooter, showTax, showPaymentMethod, showWatermark, showSequenceNumber, showTableNumber, lastConnectedDeviceAddress?, lastConnectedDeviceName? } }`
   - Error codes:
     - `400 { error: "NO_CHANGES" }` (payload kosong)
+
+### Reports
+Requires bearer access token + permission `canViewReports`.
+
+- `GET /v1/reports/transactions`
+  - Query params:
+    - `from`: ISO datetime, wajib
+    - `to`: ISO datetime, wajib
+    - `limit`: number, opsional
+    - `cursor`: string, opsional
+    - `filterType`: `"all" | "edited" | "deleted"`, opsional
+    - `paymentMethod`: metode pembayaran, opsional
+    - `userId`: string, opsional. Khusus `owner`, bisa dipakai untuk memfilter transaksi berdasarkan admin/kasir tertentu.
+  - Catatan akses:
+    - `owner` tanpa `userId` akan melihat semua transaksi sesuai periode/filter.
+    - `owner` dengan `userId` hanya akan melihat transaksi milik user tersebut.
+    - `admin` / `cashier` akan selalu dibatasi ke transaksi miliknya sendiri, meskipun mengirim `userId`.
+
+- `GET /v1/reports/transactions/count`
+  - Query params:
+    - `from`: ISO datetime, wajib
+    - `to`: ISO datetime, wajib
+    - `filterType`: `"all" | "edited" | "deleted"`, opsional
+    - `paymentMethod`: metode pembayaran, opsional
+    - `userId`: string, opsional. Khusus `owner`, untuk menghitung total transaksi milik admin/kasir tertentu.
+  - Catatan akses:
+    - Aturan visibilitas data sama seperti endpoint `/v1/reports/transactions`.
+
+### Internal Admin
+Autentikasi yang didukung:
+- Header `X-Internal-Admin-Secret: <INTERNAL_ADMIN_SECRET>` untuk fallback server-to-server.
+- Bearer token dari `POST /v1/internal-admin/auth/login` untuk dashboard/admin UI internal.
+
+- `POST /v1/internal-admin/auth/login`
+  - Body:
+    - `email`
+    - `password`
+  - Response:
+    - `accessToken`
+    - `expiresInSeconds`
+    - `admin.email`
+
+- `GET /v1/internal-admin/users/stats`
+  - Tujuan:
+    - Melihat statistik user lintas tenant untuk kebutuhan super admin/internal ops.
+  - Query params:
+    - `from`: ISO datetime dengan offset, opsional. Filter periode transaksi/pengeluaran.
+    - `to`: ISO datetime dengan offset, opsional. Filter periode transaksi/pengeluaran.
+    - `tenantId`: UUID tenant, opsional.
+    - `role`: `"owner" | "admin" | "cashier"`, opsional.
+    - `status`: `"active" | "disabled"`, opsional.
+    - `search`: string, opsional. Cari berdasarkan nama user, email, atau nama tenant.
+    - `limit`: number 1-200, opsional. Default `50`.
+    - `offset`: number >= 0, opsional. Default `0`.
+    - `cursor`: string, opsional. Jika dikirim, endpoint akan memakai cursor pagination dan mengabaikan `offset`.
+    - `sortBy`: `"createdAt" | "lastLoginAt" | "totalSales" | "totalTransactions"`, opsional. Default `totalSales`.
+    - `sortOrder`: `"asc" | "desc"`, opsional. Default `desc`.
+  - Response ringkas:
+    - `summary.totalUsers`
+    - `summary.activeUsers`
+    - `summary.disabledUsers`
+    - `summary.totalTransactions`
+    - `summary.totalSales`
+    - `summary.totalExpenses`
+    - `users[]`: data user + tenant + statistik per user (`totalTransactions`, `totalSales`, `deletedTransactions`, `editedTransactions`, `kasbonTransactions`, `kasbonSales`, `totalExpenses`, `activeSessionCount`)
+    - `pagination.mode`: `"offset" | "cursor"`
+    - `pagination.nextCursor`: cursor untuk halaman berikutnya saat `hasMore = true`
+
+- `POST /v1/internal-admin/users/force-password`
+  - Tujuan:
+    - Reset password user secara internal tanpa login sebagai tenant tersebut.
 
 ### Deploy VPS backend (pull + rebuild + migrate) 
 - `cd ~/kasirgoplus-backend`

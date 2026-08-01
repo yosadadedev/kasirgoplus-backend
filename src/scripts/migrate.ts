@@ -26,7 +26,18 @@ const getApplied = async () => {
   return new Set(rows.map((r: { id: string }) => r.id));
 };
 
+const shouldRunWithoutTransaction = (content: string) => {
+  return /^\s*--\s*migrate:\s*no-transaction\s*$/m.test(content);
+};
+
 const applyMigration = async (id: string, content: string) => {
+  if (shouldRunWithoutTransaction(content)) {
+    await ensureMigrationsTable();
+    await sql.unsafe(content);
+    await sql`INSERT INTO migrations (id) VALUES (${id}) ON CONFLICT (id) DO NOTHING`;
+    return;
+  }
+
   await sql.begin(async (tx: any) => {
     await tx.unsafe(content);
     await tx`INSERT INTO migrations (id) VALUES (${id})`;
