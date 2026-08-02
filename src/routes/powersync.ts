@@ -77,6 +77,7 @@ const allowedColumns: Record<string, Set<string>> = {
     "change",
     "cashier",
     "timestamp",
+    "is_backdated",
     "is_edited",
     "notes",
     "sequence_number",
@@ -145,7 +146,7 @@ const allowedColumns: Record<string, Set<string>> = {
 const booleanColumns: Record<string, Set<string>> = {
   categories: new Set(["is_visible"]),
   products: new Set(["track_cost"]),
-  transactions: new Set(["is_edited"]),
+  transactions: new Set(["is_backdated", "is_edited"]),
   expenses: new Set([]),
   customers: new Set(["is_active"]),
   discounts: new Set(["is_active"]),
