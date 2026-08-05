@@ -59,7 +59,8 @@ export const transactionsRoutes = new Hono<{ Variables: HonoVariables }>()
       const rows = (await tx.unsafe(
         `
           UPDATE transactions
-          SET deleted_at = now(), updated_at = now(), updated_by = $${params.length + 1}, updated_seq = updated_seq + 1
+          SET deleted_at = now(), updated_at = now(), updated_by = $${params.length + 1}, updated_seq = updated_seq + 1,
+              last_mobile_mutation_at = now(), sync_recent_mobile = true
           WHERE ${where.join(" AND ")}
           RETURNING id, items
         `,

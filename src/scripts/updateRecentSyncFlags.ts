@@ -4,19 +4,27 @@ const updateRecentSyncFlags = async () => {
   const [transactions, expenses] = await Promise.all([
     sql<{ id: string }[]>`
       UPDATE transactions
-      SET sync_recent_mobile = (timestamp >= now() - interval '30 days')
-      WHERE sync_recent_mobile IS DISTINCT FROM (timestamp >= now() - interval '30 days')
+      SET sync_recent_mobile = (
+        last_mobile_mutation_at IS NOT NULL
+        AND last_mobile_mutation_at >= now() - interval '30 days'
+      )
+      WHERE sync_recent_mobile IS DISTINCT FROM (
+        last_mobile_mutation_at IS NOT NULL
+        AND last_mobile_mutation_at >= now() - interval '30 days'
+      )
       RETURNING id
     `,
     sql<{ id: string }[]>`
       UPDATE expenses
       SET sync_recent_mobile = (
         deleted_at IS NULL
-        AND date >= now() - interval '30 days'
+        AND last_mobile_mutation_at IS NOT NULL
+        AND last_mobile_mutation_at >= now() - interval '30 days'
       )
       WHERE sync_recent_mobile IS DISTINCT FROM (
         deleted_at IS NULL
-        AND date >= now() - interval '30 days'
+        AND last_mobile_mutation_at IS NOT NULL
+        AND last_mobile_mutation_at >= now() - interval '30 days'
       )
       RETURNING id
     `,
