@@ -160,7 +160,7 @@ const jsonColumns: Record<string, Set<string>> = {
   customers: new Set([]),
 };
 
-const RECENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const isWithinRecentWindow = (value: unknown) => {
   const ts = new Date(typeof value === "string" || value instanceof Date ? value : "").getTime();
