@@ -9,7 +9,7 @@ const EnvSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().min(1).optional(),
   R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   R2_PUBLIC_BASE_URL: z.string().url().optional(),
-  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
   PASSWORD_RESET_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 30),
   RETURN_RESET_TOKEN: z.coerce.boolean().default(true),
