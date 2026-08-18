@@ -112,10 +112,7 @@ const buildTransactionWhere = (
   const where: string[] = ["tenant_id = $1", "timestamp >= $2", "timestamp <= $3"];
   const params: any[] = [authUser.tenantId, input.from, input.to];
 
-  if (authUser.role !== "owner") {
-    where.push(`created_by = $${params.length + 1}`);
-    params.push(authUser.id);
-  } else if (input.userId) {
+  if (input.userId) {
     where.push(`created_by = $${params.length + 1}`);
     params.push(input.userId);
   }
