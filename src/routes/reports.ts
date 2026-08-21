@@ -18,6 +18,14 @@ const PaymentMethodSchema = z.enum([
 ]);
 const FilterTypeSchema = z.enum(["all", "edited", "deleted"]);
 
+const StockMovementsQuerySchema = z.object({
+  productId: z.string().min(1),
+  from: z.string().datetime({ offset: true }),
+  to: z.string().datetime({ offset: true }),
+  limit: z.coerce.number().int().min(1).max(500).optional().default(200),
+  cursor: z.string().optional(),
+});
+
 const ReportsTransactionsQuerySchema = z.object({
   from: z.string().datetime({ offset: true }),
   to: z.string().datetime({ offset: true }),
@@ -46,6 +54,20 @@ type TransactionRow = {
   sequence_number: string | null;
   table_number: string | null;
   deleted_at: string | null;
+};
+
+type StockMovementRow = {
+  id: string;
+  product_id: string;
+  type: string;
+  quantity_change: number | string;
+  stock_before: number | string;
+  stock_after: number | string;
+  note: string | null;
+  reference_id: string | null;
+  created_at: string;
+  created_by: string | null;
+  transaction_cashier: string | null;
 };
 
 type ExpenseRow = {
@@ -94,6 +116,20 @@ const toTransactionDto = (row: TransactionRow) => ({
   deleted_at: row.deleted_at ?? null,
 });
 
+const toStockMovementDto = (row: StockMovementRow) => ({
+  id: row.id,
+  product_id: row.product_id,
+  type: row.type,
+  quantity_change: Number(row.quantity_change ?? 0),
+  stock_before: Number(row.stock_before ?? 0),
+  stock_after: Number(row.stock_after ?? 0),
+  note: row.note ?? null,
+  reference_id: row.reference_id ?? null,
+  created_at: row.created_at,
+  created_by: row.created_by ?? null,
+  transaction_cashier: row.transaction_cashier ?? null,
+});
+
 const toExpenseDto = (row: ExpenseRow) => ({
   id: row.id,
   amount: Number(row.amount ?? 0),
@@ -135,6 +171,30 @@ const buildTransactionWhere = (
     const tsIndex = params.length + 1;
     const idIndex = params.length + 2;
     where.push(`(timestamp < $${tsIndex} OR (timestamp = $${tsIndex} AND id < $${idIndex}))`);
+    params.push(cursor.timestamp, cursor.id);
+  }
+
+  return { where, params };
+};
+
+const buildStockMovementWhere = (
+  input: z.infer<typeof StockMovementsQuerySchema>,
+  tenantId: string,
+) => {
+  const cursor = parseCursor(input.cursor);
+  const where: string[] = [
+    "sm.tenant_id = $1",
+    "sm.product_id = $2",
+    "sm.created_at >= $3",
+    "sm.created_at <= $4",
+    "sm.deleted_at IS NULL",
+  ];
+  const params: any[] = [tenantId, input.productId, input.from, input.to];
+
+  if (cursor) {
+    const tsIndex = params.length + 1;
+    const idIndex = params.length + 2;
+    where.push(`(sm.created_at < $${tsIndex} OR (sm.created_at = $${tsIndex} AND sm.id < $${idIndex}))`);
     params.push(cursor.timestamp, cursor.id);
   }
 
@@ -219,6 +279,41 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
     );
 
     return c.json({ count: Number(rows[0]?.c ?? 0) });
+  })
+  .get("/stock-movements", requirePermission("canManageProducts"), async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const input = StockMovementsQuerySchema.parse(c.req.query());
+    const { where, params } = buildStockMovementWhere(input, authUser.tenantId);
+    const limitIndex = params.length + 1;
+
+    const rows = await sql.unsafe<StockMovementRow[]>(
+      `
+        SELECT
+          sm.id,
+          sm.product_id,
+          sm.type,
+          sm.quantity_change,
+          sm.stock_before,
+          sm.stock_after,
+          sm.note,
+          sm.reference_id,
+          sm.created_at,
+          sm.created_by,
+          t.cashier AS transaction_cashier
+        FROM stock_movements sm
+        LEFT JOIN transactions t ON sm.reference_id = t.id AND t.tenant_id = sm.tenant_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY sm.created_at DESC, sm.id DESC
+        LIMIT $${limitIndex}
+      `,
+      [...params, input.limit],
+    );
+
+    const items = rows.map(toStockMovementDto);
+    const last = rows[rows.length - 1];
+    const nextCursor = rows.length === input.limit && last ? `${last.created_at}|${last.id}` : null;
+
+    return c.json({ items, nextCursor });
   })
   .get("/expenses", requirePermission("canAddExpenses"), async (c: any) => {
     const authUser = c.get("authUser")!;
