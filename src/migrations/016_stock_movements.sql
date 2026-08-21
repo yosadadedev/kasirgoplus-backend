@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS stock_movements (
   id text PRIMARY KEY,
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  product_id text REFERENCES products(id) ON DELETE SET NULL,
+  product_id uuid REFERENCES products(id) ON DELETE SET NULL,
   type text NOT NULL CHECK (type IN ('sale', 'adjustment_add', 'adjustment_subtract', 'restore')),
   quantity_change integer NOT NULL DEFAULT 0,
   stock_before integer NOT NULL DEFAULT 0,
