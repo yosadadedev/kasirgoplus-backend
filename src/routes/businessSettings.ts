@@ -15,6 +15,7 @@ const UpdateBusinessSettingsSchema = z
     businessCity: z.string().optional(),
     operationalOpenTime: TimeHHmm.optional(),
     operationalCloseTime: TimeHHmm.optional(),
+    taxRate: z.number().min(0).max(100).optional(),
   })
   .passthrough();
 
@@ -74,6 +75,7 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         business_city,
         operational_open_time,
         operational_close_time,
+        tax_rate,
         updated_at,
         created_at,
         created_by,
@@ -90,6 +92,7 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         ${input.businessCity ?? ""},
         ${input.operationalOpenTime ?? "00:00"},
         ${input.operationalCloseTime ?? "23:59"},
+        ${input.taxRate != null ? Math.round(input.taxRate) : 0},
         now(),
         now(),
         ${authUser.id},
@@ -104,6 +107,7 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         business_city = COALESCE(${input.businessCity ?? null}, business_settings.business_city),
         operational_open_time = COALESCE(${input.operationalOpenTime ?? null}, business_settings.operational_open_time),
         operational_close_time = COALESCE(${input.operationalCloseTime ?? null}, business_settings.operational_close_time),
+        tax_rate = COALESCE(${input.taxRate != null ? Math.round(input.taxRate) : null}, business_settings.tax_rate),
         updated_at = now(),
         updated_by = ${authUser.id},
         updated_seq = business_settings.updated_seq + 1
