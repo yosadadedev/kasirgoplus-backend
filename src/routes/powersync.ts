@@ -268,7 +268,8 @@ powersyncRoutes.post("/upload", async (c: any) => {
     console.info("[powersync.upload]", { tenantId, ops: body.crud.length, summary });
   }
 
-  await sql.begin(async (tx) => {
+  try {
+    await sql.begin(async (tx) => {
     for (const op of body.crud) {
       const table = op.table;
       const data = applyRecentSyncFlag(op.op, table, pickAllowed(table, op.data ?? {}));
@@ -306,10 +307,10 @@ powersyncRoutes.post("/upload", async (c: any) => {
         if (cols.length === 0) continue;
         const vals = cols.map((k) => data[k]);
         const sets = cols.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
-        
+
         // Similar check for PATCH
         const seqIndex = cols.indexOf("updated_seq");
-        const whereClause = seqIndex !== -1 
+        const whereClause = seqIndex !== -1
           ? `AND (updated_seq IS NULL OR updated_seq <= $${seqIndex + 1})`
           : "";
 
@@ -321,7 +322,18 @@ powersyncRoutes.post("/upload", async (c: any) => {
         continue;
       }
     }
-  });
+    });
+  } catch (e: any) {
+    if (typeof e?.code === "string" && e.code.startsWith("23")) {
+      // Postgres integrity constraint violation class (unique, FK, NOT NULL, CHECK, ...).
+      // Retrying the same batch will never succeed, so surface it as a conflict instead of 500.
+      return c.json(
+        { error: "CONSTRAINT_VIOLATION", code: e.code, constraint: e?.constraint_name, table: e?.table_name },
+        409,
+      );
+    }
+    throw e;
+  }
 
   return c.json({ ok: true });
 });

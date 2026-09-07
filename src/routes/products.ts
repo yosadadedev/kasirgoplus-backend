@@ -236,7 +236,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
     const authUser = c.get("authUser")!;
     const input = ProductCreateSchema.parse(await c.req.json());
     const unitInfo = normalizeUnit(input);
-    const rows = (await sql`
+    let rows: any[];
+    try {
+      rows = (await sql`
       INSERT INTO products (
         tenant_id,
         name,
@@ -284,7 +286,11 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         1
       )
       RETURNING *
-    `) as unknown as any[];
+      `) as unknown as any[];
+    } catch (e: any) {
+      if (e?.code === "23505") return c.json({ error: "BARCODE_TAKEN" }, 409);
+      throw e;
+    }
     const r = rows[0]!;
     return c.json(
       {
@@ -317,7 +323,9 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
     const input = ProductUpdateSchema.parse(await c.req.json());
     const unitInfo = normalizeUnit(input);
 
-    const rows = (await sql`
+    let rows: any[];
+    try {
+      rows = (await sql`
       UPDATE products
       SET
         name = COALESCE(${input.name ?? null}, name),
@@ -342,7 +350,11 @@ export const productsRoutes = new Hono<{ Variables: HonoVariables }>()
         updated_at = now()
       WHERE id = ${id} AND tenant_id = ${authUser.tenantId} AND deleted_at IS NULL
       RETURNING *
-    `) as unknown as any[];
+      `) as unknown as any[];
+    } catch (e: any) {
+      if (e?.code === "23505") return c.json({ error: "BARCODE_TAKEN" }, 409);
+      throw e;
+    }
     const r = rows[0];
     if (!r) return c.json({ error: "NOT_FOUND" }, 404);
     return c.json({
