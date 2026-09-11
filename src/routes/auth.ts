@@ -6,7 +6,7 @@ import { sha256Hex } from "../auth/crypto";
 import { signAccessToken } from "../auth/jwt";
 import { hashSecret, verifySecret } from "../auth/password";
 import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } from "../rbac";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 const base64Url = (bytes: Uint8Array) => {
   const b64 = Buffer.from(bytes).toString("base64");
@@ -64,27 +64,18 @@ type DbUserRow = {
   permissions: Permissions | null;
 };
 
-let mailer: nodemailer.Transporter | null = null;
+let resend: Resend | null = null;
 const getMailer = () => {
-  const host = (env.SMTP_HOST || "").trim();
-  const user = (env.SMTP_USER || "").trim();
-  const pass = env.SMTP_PASS || "";
-  if (!host || !user || !pass) return null;
-  if (mailer) return mailer;
+  const apiKey = (env.RESEND_API_KEY || "").trim();
+  if (!apiKey) return null;
+  if (resend) return resend;
 
-  const port = typeof env.SMTP_PORT === "number" ? env.SMTP_PORT : 465;
-  const secure = typeof env.SMTP_SECURE === "boolean" ? env.SMTP_SECURE : port === 465;
-  mailer = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
-  return mailer;
+  resend = new Resend(apiKey);
+  return resend;
 };
 
 const getMailFrom = () => {
-  const from = (env.SMTP_FROM || "").trim();
+  const from = (env.RESEND_FROM || "").trim();
   return from || "KasirGo+ <no-reply@kasirgoplus.my.id>";
 };
 
@@ -362,10 +353,10 @@ export const authRoutes = new Hono()
       VALUES (${user.tenant_id}, ${user.id}, ${tokenHash}, ${expiresAt})
     `;
 
-    const transporter = getMailer();
-    if (transporter) {
+    const mailer = getMailer();
+    if (mailer) {
       try {
-        await transporter.sendMail({
+        const { error } = await mailer.emails.send({
           from: getMailFrom(),
           to: email,
           subject: "Kode OTP Reset Password KasirGo+",
@@ -375,13 +366,15 @@ export const authRoutes = new Hono()
             `OTP ini berlaku ${Math.floor(env.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)} menit.\n\n` +
             "Jika Anda tidak merasa meminta reset password, abaikan email ini.",
         });
-        logSmtp("SEND_OK", { to: email });
+        if (error) {
+          logSmtp("SEND_FAILED", { to: email, message: error.message, name: error.name });
+        } else {
+          logSmtp("SEND_OK", { to: email });
+        }
       } catch (e: any) {
         logSmtp("SEND_FAILED", {
           to: email,
           message: typeof e?.message === "string" ? e.message : String(e),
-          code: typeof e?.code === "string" ? e.code : undefined,
-          responseCode: typeof e?.responseCode === "number" ? e.responseCode : undefined,
         });
       }
     } else {
