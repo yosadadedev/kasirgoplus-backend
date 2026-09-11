@@ -183,7 +183,12 @@ const upsertBusinessSettings = async (
   return rows[0]!;
 };
 
-const upsertQrisImageUrl = async (tenantId: string, authUserId: string, imageUrl: string | null) => {
+const upsertQrisImageUrl = async (
+  tenantId: string,
+  authUserId: string,
+  imageUrl: string | null,
+  active: boolean,
+) => {
   const id = `business_${tenantId}`;
   const rows = (await sql`
     INSERT INTO business_settings (
@@ -219,7 +224,7 @@ const upsertQrisImageUrl = async (tenantId: string, authUserId: string, imageUrl
       0,
       ${imageUrl},
       '',
-      false,
+      ${active},
       now(),
       now(),
       ${authUserId},
@@ -228,6 +233,7 @@ const upsertQrisImageUrl = async (tenantId: string, authUserId: string, imageUrl
     )
     ON CONFLICT (id) DO UPDATE SET
       qris_image_url = ${imageUrl},
+      qris_active = ${active},
       updated_at = now(),
       updated_by = ${authUserId},
       updated_seq = business_settings.updated_seq + 1
@@ -297,13 +303,6 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
     }
 
     try {
-      const existingRows = (await sql`
-        SELECT qris_image_url FROM business_settings
-        WHERE tenant_id = ${authUser.tenantId} AND deleted_at IS NULL
-        LIMIT 1
-      `) as unknown as any[];
-      const previousImageUrl = existingRows[0]?.qris_image_url as string | null | undefined;
-
       const uploaded = await uploadQrisImageToR2({
         tenantId: authUser.tenantId,
         file,
@@ -311,20 +310,12 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
       const origin = resolvePublicOrigin(c);
       const imageUrl = `${origin}/v1/business-settings/qris-image/${uploaded.imageKey}`;
 
-      const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, imageUrl);
-
-      if (previousImageUrl && previousImageUrl !== imageUrl) {
-        await deleteQrisImageFromR2({ imageUrl: previousImageUrl }).catch((err) => {
-          console.error(
-            `[qris] gagal hapus gambar lama tenant=${authUser.tenantId} url=${previousImageUrl}:`,
-            err,
-          );
-        });
-      }
+      const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, imageUrl, true);
 
       console.log(
         `[qris] upload berhasil tenant=${authUser.tenantId} user=${authUser.id} key=${uploaded.imageKey} url=${imageUrl}`,
       );
+
       return c.json({ business: mapBusinessRow(r) }, 201);
     } catch (error) {
       const message = error instanceof Error ? error.message : "UPLOAD_FAILED";
@@ -365,7 +356,7 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
       });
     }
 
-    const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, null);
+    const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, null, false);
     console.log(
       `[qris] hapus gambar berhasil tenant=${authUser.tenantId} user=${authUser.id} previousUrl=${previousImageUrl ?? "-"}`,
     );
