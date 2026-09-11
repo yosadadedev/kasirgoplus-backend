@@ -314,12 +314,21 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
       const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, imageUrl);
 
       if (previousImageUrl && previousImageUrl !== imageUrl) {
-        await deleteQrisImageFromR2({ imageUrl: previousImageUrl }).catch(() => {});
+        await deleteQrisImageFromR2({ imageUrl: previousImageUrl }).catch((err) => {
+          console.error(
+            `[qris] gagal hapus gambar lama tenant=${authUser.tenantId} url=${previousImageUrl}:`,
+            err,
+          );
+        });
       }
 
+      console.log(
+        `[qris] upload berhasil tenant=${authUser.tenantId} user=${authUser.id} key=${uploaded.imageKey} url=${imageUrl}`,
+      );
       return c.json({ business: mapBusinessRow(r) }, 201);
     } catch (error) {
       const message = error instanceof Error ? error.message : "UPLOAD_FAILED";
+      console.error(`[qris] upload gagal tenant=${authUser.tenantId} user=${authUser.id}:`, error);
       if (message === "R2_NOT_CONFIGURED") {
         return c.json({ error: "R2_NOT_CONFIGURED" }, 503);
       }
@@ -348,9 +357,17 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
     const previousImageUrl = existingRows[0]?.qris_image_url as string | null | undefined;
 
     if (previousImageUrl) {
-      await deleteQrisImageFromR2({ imageUrl: previousImageUrl }).catch(() => {});
+      await deleteQrisImageFromR2({ imageUrl: previousImageUrl }).catch((err) => {
+        console.error(
+          `[qris] gagal hapus gambar dari R2 tenant=${authUser.tenantId} url=${previousImageUrl}:`,
+          err,
+        );
+      });
     }
 
     const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, null);
+    console.log(
+      `[qris] hapus gambar berhasil tenant=${authUser.tenantId} user=${authUser.id} previousUrl=${previousImageUrl ?? "-"}`,
+    );
     return c.json({ business: mapBusinessRow(r) });
   });
