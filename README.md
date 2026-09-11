@@ -149,11 +149,21 @@ Requires bearer access token + permission `canManageCashiers`.
     - `businessCity`: string
     - `operationalOpenTime`: string `"HH:mm"` (contoh `"08:00"`)
     - `operationalCloseTime`: string `"HH:mm"` (contoh `"22:00"`)
+    - `qrisMerchantName`: string
+    - `qrisActive`: boolean
   - Response:
-    - `{ business: { businessName, businessAddress, businessPhone, businessEmail, businessCity, operationalOpenTime, operationalCloseTime, taxRate, currency, logo? } }`
+    - `{ business: { businessName, businessAddress, businessPhone, businessEmail, businessCity, operationalOpenTime, operationalCloseTime, taxRate, currency, logo?, qrisImageUrl?, qrisMerchantName, qrisActive } }`
   - Error codes:
     - `403 { error: "FORBIDDEN" }` (cashier)
     - `400 { error: "NO_CHANGES" }` (payload kosong)
+- `POST /v1/business-settings/upload-qris-image` (owner/manager only, `multipart/form-data` field `file`, max 5MB, image only)
+  - Upload otomatis mengganti (dan menghapus dari R2) gambar QRIS lama jika ada.
+  - Response: `{ business: {...termasuk qrisImageUrl baru...} }` (201)
+  - Error codes: `503 R2_NOT_CONFIGURED`, `413 FILE_TOO_LARGE`, `400 INVALID_FILE|EMPTY_FILE|INVALID_IMAGE_TYPE`
+- `POST /v1/business-settings/delete-qris-image` (owner/manager only)
+  - Menghapus gambar QRIS dari R2 dan mengosongkan `qrisImageUrl`.
+  - Response: `{ business: {...qrisImageUrl: undefined...} }`
+- `GET|HEAD /v1/business-settings/qris-image/*` (public, proxy — bucket R2 tetap private)
 
 ### Printer Settings
 - `GET /v1/printer-settings`

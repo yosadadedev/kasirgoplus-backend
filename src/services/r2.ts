@@ -61,10 +61,9 @@ const createR2Client = () => {
   });
 };
 
-export const getR2ImageKeyFromUrl = (imageUrl: string) => {
+const resolveImageKeyFromUrl = (imageUrl: string, proxyMarker: string) => {
   try {
     const parsed = new URL(imageUrl);
-    const proxyMarker = "/v1/products/image/";
     const proxyIndex = parsed.pathname.indexOf(proxyMarker);
     if (proxyIndex >= 0) {
       const proxyKey = decodeURIComponent(parsed.pathname.slice(proxyIndex + proxyMarker.length)).trim();
@@ -83,12 +82,19 @@ export const getR2ImageKeyFromUrl = (imageUrl: string) => {
   return key || null;
 };
 
-export const uploadProductImageToR2 = async (input: {
+export const getR2ImageKeyFromUrl = (imageUrl: string) =>
+  resolveImageKeyFromUrl(imageUrl, "/v1/products/image/");
+
+export const getQrisImageKeyFromUrl = (imageUrl: string) =>
+  resolveImageKeyFromUrl(imageUrl, "/v1/business-settings/qris-image/");
+
+const uploadImageToR2 = async (input: {
   tenantId: string;
   file: File;
+  folder: string;
 }) => {
   const config = getRequiredR2Config();
-  const { tenantId, file } = input;
+  const { tenantId, file, folder } = input;
 
   if (!(file instanceof File)) {
     throw new Error("INVALID_FILE");
@@ -109,7 +115,7 @@ export const uploadProductImageToR2 = async (input: {
     throw new Error("INVALID_IMAGE_TYPE");
   }
 
-  const key = `tenants/${tenantId}/products/${crypto.randomUUID()}.${extension}`;
+  const key = `tenants/${tenantId}/${folder}/${crypto.randomUUID()}.${extension}`;
   const client = createR2Client();
 
   await client.send(
@@ -128,7 +134,13 @@ export const uploadProductImageToR2 = async (input: {
   };
 };
 
-export const getProductImageFromR2 = async (imageKey: string) => {
+export const uploadProductImageToR2 = (input: { tenantId: string; file: File }) =>
+  uploadImageToR2({ ...input, folder: "products" });
+
+export const uploadQrisImageToR2 = (input: { tenantId: string; file: File }) =>
+  uploadImageToR2({ ...input, folder: "qris" });
+
+const fetchImageFromR2 = async (imageKey: string) => {
   const config = getRequiredR2Config();
   const normalizedKey = imageKey.trim();
   if (!normalizedKey) {
@@ -154,12 +166,15 @@ export const getProductImageFromR2 = async (imageKey: string) => {
   };
 };
 
-export const deleteProductImageFromR2 = async (input: {
-  imageKey?: string | null;
-  imageUrl?: string | null;
-}) => {
+export const getProductImageFromR2 = fetchImageFromR2;
+export const getQrisImageFromR2 = fetchImageFromR2;
+
+const deleteImageFromR2 = async (
+  input: { imageKey?: string | null; imageUrl?: string | null },
+  resolveKeyFromUrl: (url: string) => string | null,
+) => {
   const config = getRequiredR2Config();
-  const imageKey = input.imageKey?.trim() || (input.imageUrl ? getR2ImageKeyFromUrl(input.imageUrl) : null);
+  const imageKey = input.imageKey?.trim() || (input.imageUrl ? resolveKeyFromUrl(input.imageUrl) : null);
   if (!imageKey) {
     throw new Error("INVALID_IMAGE_REFERENCE");
   }
@@ -174,3 +189,9 @@ export const deleteProductImageFromR2 = async (input: {
 
   return { ok: true, imageKey };
 };
+
+export const deleteProductImageFromR2 = (input: { imageKey?: string | null; imageUrl?: string | null }) =>
+  deleteImageFromR2(input, getR2ImageKeyFromUrl);
+
+export const deleteQrisImageFromR2 = (input: { imageKey?: string | null; imageUrl?: string | null }) =>
+  deleteImageFromR2(input, getQrisImageKeyFromUrl);
