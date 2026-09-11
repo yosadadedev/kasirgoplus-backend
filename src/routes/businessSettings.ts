@@ -1,9 +1,15 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { sql } from "../db";
+import { env } from "../env";
 import { requireAuth } from "../middleware/auth";
 import type { HonoVariables } from "../context";
 import { deleteQrisImageFromR2, getQrisImageFromR2, uploadQrisImageToR2 } from "../services/r2";
+
+const resolvePublicOrigin = (c: any) => {
+  if (env.PUBLIC_API_BASE_URL) return env.PUBLIC_API_BASE_URL.replace(/\/$/, "");
+  return new URL(c.req.url).origin;
+};
 
 const TimeHHmm = z.string().regex(/^\d{2}:\d{2}$/);
 
@@ -302,7 +308,7 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         tenantId: authUser.tenantId,
         file,
       });
-      const origin = new URL(c.req.url).origin;
+      const origin = resolvePublicOrigin(c);
       const imageUrl = `${origin}/v1/business-settings/qris-image/${uploaded.imageKey}`;
 
       const r = await upsertQrisImageUrl(authUser.tenantId, authUser.id, imageUrl);
