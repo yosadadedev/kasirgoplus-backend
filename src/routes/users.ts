@@ -20,6 +20,7 @@ const PermissionsSchema = z
     canDeleteTransactions: z.boolean().optional(),
     canAddExpenses: z.boolean().optional(),
     canViewReports: z.boolean().optional(),
+    canManageQris: z.boolean().optional(),
   })
   .strict();
 

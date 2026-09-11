@@ -8,6 +8,7 @@ export const permissionKeys = [
   "canDeleteTransactions",
   "canAddExpenses",
   "canViewReports",
+  "canManageQris",
 ] as const;
 
 export type PermissionKey = (typeof permissionKeys)[number];
@@ -28,6 +29,7 @@ export const roleDefaultPermissions = (role: Role): Permissions => {
     canDeleteTransactions: false,
     canAddExpenses: true,
     canViewReports: false,
+    canManageQris: false,
   };
   if (role === "owner") return all;
   if (role === "admin") return all;
