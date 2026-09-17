@@ -213,3 +213,15 @@ Requires bearer access token + permission `canManageCashiers`.
 - uptime
 - free -h
 - df -h
+
+# Log real-time (ikuti terus)
+sudo docker logs -f kasirgoplus-backend-backend-1
+
+# 200 baris terakhir
+sudo docker logs --tail 200 kasirgoplus-backend-backend-1
+
+# Cari error aja
+sudo docker logs --tail 500 kasirgoplus-backend-backend-1 2>&1 | grep -i error
+
+# Cari log qris spesifik
+sudo docker logs --tail 500 kasirgoplus-backend-backend-1 2>&1 | grep -i qris

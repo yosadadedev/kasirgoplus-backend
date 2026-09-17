@@ -97,6 +97,7 @@ const allowedColumns: Record<string, Set<string>> = {
     "category",
     "description",
     "date",
+    "type",
     "created_at",
     "updated_at",
     "created_by",

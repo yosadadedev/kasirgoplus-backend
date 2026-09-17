@@ -52,7 +52,9 @@ export const categoriesRoutes = new Hono<{ Variables: HonoVariables }>()
   .post("/", requirePermission("canManageCategories"), async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = CategoryCreateSchema.parse(await c.req.json());
-    const rows = (await sql`
+    let rows: any[];
+    try {
+      rows = (await sql`
       INSERT INTO categories (tenant_id, name, is_visible, icon, priority, created_by, updated_by, updated_seq)
       VALUES (
         ${authUser.tenantId},
@@ -65,15 +67,19 @@ export const categoriesRoutes = new Hono<{ Variables: HonoVariables }>()
         1
       )
       RETURNING id, name, is_visible, icon, priority, created_at, updated_at
-    `) as unknown as {
-      id: string;
-      name: string;
-      is_visible: boolean;
-      icon: string | null;
-      priority: number;
-      created_at: string;
-      updated_at: string;
-    }[];
+      `) as unknown as {
+        id: string;
+        name: string;
+        is_visible: boolean;
+        icon: string | null;
+        priority: number;
+        created_at: string;
+        updated_at: string;
+      }[];
+    } catch (e: any) {
+      if (e?.code === "23505") return c.json({ error: "CATEGORY_NAME_TAKEN" }, 409);
+      throw e;
+    }
     const r = rows[0]!;
     return c.json(
       {
@@ -94,7 +100,9 @@ export const categoriesRoutes = new Hono<{ Variables: HonoVariables }>()
     const authUser = c.get("authUser")!;
     const id = c.req.param("id");
     const input = CategoryUpdateSchema.parse(await c.req.json());
-    const rows = (await sql`
+    let rows: any[];
+    try {
+      rows = (await sql`
       UPDATE categories
       SET
         name = COALESCE(${input.name ?? null}, name),
@@ -106,15 +114,19 @@ export const categoriesRoutes = new Hono<{ Variables: HonoVariables }>()
         updated_at = now()
       WHERE id = ${id} AND tenant_id = ${authUser.tenantId} AND deleted_at IS NULL
       RETURNING id, name, is_visible, icon, priority, created_at, updated_at
-    `) as unknown as {
-      id: string;
-      name: string;
-      is_visible: boolean;
-      icon: string | null;
-      priority: number;
-      created_at: string;
-      updated_at: string;
-    }[];
+      `) as unknown as {
+        id: string;
+        name: string;
+        is_visible: boolean;
+        icon: string | null;
+        priority: number;
+        created_at: string;
+        updated_at: string;
+      }[];
+    } catch (e: any) {
+      if (e?.code === "23505") return c.json({ error: "CATEGORY_NAME_TAKEN" }, 409);
+      throw e;
+    }
     const r = rows[0];
     if (!r) return c.json({ error: "NOT_FOUND" }, 404);
     return c.json({

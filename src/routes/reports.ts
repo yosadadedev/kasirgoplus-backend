@@ -36,6 +36,12 @@ const ReportsTransactionsQuerySchema = z.object({
   userId: z.string().min(1).optional(),
 });
 
+const ExpenseTypeSchema = z.enum(["expense", "income"]);
+
+const ReportsExpensesQuerySchema = ReportsTransactionsQuerySchema.extend({
+  type: ExpenseTypeSchema.optional(),
+});
+
 type TransactionRow = {
   id: string;
   items: any;
@@ -76,6 +82,7 @@ type ExpenseRow = {
   category: string;
   description: string | null;
   date: string;
+  type: string;
   created_at: string;
   deleted_at: string | null;
 };
@@ -136,6 +143,7 @@ const toExpenseDto = (row: ExpenseRow) => ({
   category: row.category,
   description: row.description ?? null,
   date: row.date,
+  type: row.type ?? "expense",
   created_at: row.created_at,
   deleted_at: row.deleted_at ?? null,
 });
@@ -201,7 +209,7 @@ const buildStockMovementWhere = (
   return { where, params };
 };
 
-const buildExpenseWhere = (input: z.infer<typeof ReportsTransactionsQuerySchema>, tenantId: string) => {
+const buildExpenseWhere = (input: z.infer<typeof ReportsExpensesQuerySchema>, tenantId: string) => {
   const cursor = parseCursor(input.cursor);
   const where: string[] = ["tenant_id = $1", "date >= $2", "date <= $3"];
   const params: any[] = [tenantId, input.from, input.to];
@@ -210,6 +218,11 @@ const buildExpenseWhere = (input: z.infer<typeof ReportsTransactionsQuerySchema>
     where.push("deleted_at IS NOT NULL");
   } else {
     where.push("deleted_at IS NULL");
+  }
+
+  if (input.type) {
+    where.push(`type = $${params.length + 1}`);
+    params.push(input.type);
   }
 
   if (cursor) {
@@ -317,7 +330,7 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
   })
   .get("/expenses", requirePermission("canAddExpenses"), async (c: any) => {
     const authUser = c.get("authUser")!;
-    const input = ReportsTransactionsQuerySchema.parse(c.req.query());
+    const input = ReportsExpensesQuerySchema.parse(c.req.query());
     const { where, params } = buildExpenseWhere(input, authUser.tenantId);
     const limitIndex = params.length + 1;
 
@@ -329,6 +342,7 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
           category,
           description,
           date,
+          type,
           created_at,
           deleted_at
         FROM expenses
