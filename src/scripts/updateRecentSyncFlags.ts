@@ -1,38 +1,9 @@
 import { sql } from "../db";
-
-const updateRecentSyncFlags = async () => {
-  const [transactions, expenses] = await Promise.all([
-    sql<{ id: string }[]>`
-      UPDATE transactions
-      SET sync_recent_mobile = (timestamp >= now() - interval '7 days')
-      WHERE sync_recent_mobile IS DISTINCT FROM (timestamp >= now() - interval '7 days')
-      RETURNING id
-    `,
-    sql<{ id: string }[]>`
-      UPDATE expenses
-      SET sync_recent_mobile = (
-        deleted_at IS NULL
-        AND date >= now() - interval '7 days'
-      )
-      WHERE sync_recent_mobile IS DISTINCT FROM (
-        deleted_at IS NULL
-        AND date >= now() - interval '7 days'
-      )
-      RETURNING id
-    `,
-  ]);
-
-  console.log(
-    JSON.stringify({
-      ok: true,
-      transactionsUpdated: transactions.length,
-      expensesUpdated: expenses.length,
-    }),
-  );
-};
+import { refreshRecentSyncFlags } from "../services/recentSyncFlags";
 
 try {
-  await updateRecentSyncFlags();
+  const result = await refreshRecentSyncFlags();
+  console.log(JSON.stringify({ ok: true, ...result }));
 } finally {
   await sql.end({ timeout: 5 });
 }

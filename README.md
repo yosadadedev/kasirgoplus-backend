@@ -190,6 +190,44 @@ Requires bearer access token + permission `canManageCashiers`.
   - Error codes:
     - `400 { error: "NO_CHANGES" }` (payload kosong)
 
+### Internal Admin (Super Admin SaaS)
+Khusus super admin, bukan untuk aplikasi mobile/landing page. Wajib header `x-internal-admin-secret` yang sama dengan env `INTERNAL_ADMIN_SECRET` (min 16 karakter, buat dengan `openssl rand -hex 32`, restart backend setelah diubah).
+
+- `POST /v1/internal-admin/users/force-password` — ganti password user mana pun (termasuk owner) tanpa password lama.
+  - Payload: pilih salah satu identifikasi user
+    - `userId`: uuid, **atau**
+    - `tenantId` (uuid) + `email`
+    - `newPassword`: string, min 6 karakter
+    - `revokeSessions`: boolean, default `true` (logout user dari semua device)
+    - `reason`: string opsional, max 200 karakter (masuk log `internalAdmin.forcePassword`)
+  - Response: `{ ok: true, user: { id, tenantId, email, name, role, status }, sessionsRevoked }`
+  - Error codes: `503 INTERNAL_ADMIN_DISABLED` (env belum di-set), `401 UNAUTHORIZED` (secret salah), `404 NOT_FOUND`, `400` (payload tidak valid)
+
+```bash
+# Via tenantId + email
+curl -X POST https://api-anda.com/v1/internal-admin/users/force-password \
+  -H "Content-Type: application/json" \
+  -H "x-internal-admin-secret: $INTERNAL_ADMIN_SECRET" \
+  -d '{
+    "tenantId": "00000000-0000-0000-0000-000000000000",
+    "email": "owner@toko.com",
+    "newPassword": "passwordBaru123",
+    "revokeSessions": true,
+    "reason": "Owner lupa password, request via WA"
+  }'
+
+# Via userId
+curl -X POST https://api-anda.com/v1/internal-admin/users/force-password \
+  -H "Content-Type: application/json" \
+  -H "x-internal-admin-secret: $INTERNAL_ADMIN_SECRET" \
+  -d '{"userId": "00000000-0000-0000-0000-000000000000", "newPassword": "passwordBaru123"}'
+```
+
+Cari `tenantId` / `userId` dari email owner:
+```sql
+SELECT id AS user_id, tenant_id, email, name, role, status FROM users WHERE lower(email) = 'owner@toko.com';
+```
+
 ### Deploy VPS backend (pull + rebuild + migrate) 
 - `cd ~/kasirgoplus-backend`
 - `git pull`

@@ -13,6 +13,7 @@ import { printerSettingsRoutes } from "./routes/printerSettings";
 import { reportsRoutes } from "./routes/reports";
 import { internalAdminRoutes } from "./routes/internalAdmin";
 import { transactionsRoutes } from "./routes/transactions";
+import { startRecentSyncFlagsScheduler } from "./services/recentSyncFlags";
 
 const app = new Hono();
 
@@ -55,6 +56,8 @@ app.route("/v1/transactions", transactionsRoutes);
 app.route("/v1/reports", reportsRoutes);
 app.route("/v1/powersync", powersyncRoutes);
 app.route("/v1/internal-admin", internalAdminRoutes);
+
+startRecentSyncFlagsScheduler();
 
 export default {
   port: env.PORT,
