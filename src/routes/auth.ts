@@ -18,6 +18,10 @@ const generateRefreshToken = () => {
   return base64Url(bytes);
 };
 
+// Previous refresh token stays valid this long after rotation, so a client whose
+// refresh response was lost can retry with the token it still holds.
+const REFRESH_TOKEN_REUSE_GRACE_SECONDS = 120;
+
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(4).optional(),
@@ -276,6 +280,10 @@ export const authRoutes = new Hono()
       FROM device_sessions s
       JOIN users u ON u.id = s.user_id
       WHERE s.refresh_token_hash = ${hash}
+        OR (
+          s.prev_refresh_token_hash = ${hash}
+          AND s.rotated_at > now() - make_interval(secs => ${REFRESH_TOKEN_REUSE_GRACE_SECONDS})
+        )
       LIMIT 1
     `;
     const row = rows[0];
@@ -299,11 +307,30 @@ export const authRoutes = new Hono()
 
     const newRefreshToken = generateRefreshToken();
     const newHash = await sha256Hex(newRefreshToken);
-    await sql`
+    // Single conditional UPDATE so concurrent refreshes with the same token can't both
+    // win. Presenting the current token rotates it (it becomes the grace token);
+    // presenting the grace token only issues a new current token, so the window
+    // is never extended. SET expressions read the pre-update row.
+    const updated = await sql<{ id: string }[]>`
       UPDATE device_sessions
-      SET refresh_token_hash = ${newHash}, last_seen_at = now(), device_id = COALESCE(device_id, ${input.deviceId ?? null})
+      SET
+        prev_refresh_token_hash = CASE WHEN refresh_token_hash = ${hash} THEN refresh_token_hash ELSE prev_refresh_token_hash END,
+        rotated_at = CASE WHEN refresh_token_hash = ${hash} THEN now() ELSE rotated_at END,
+        refresh_token_hash = ${newHash},
+        last_seen_at = now(),
+        device_id = COALESCE(device_id, ${input.deviceId ?? null})
       WHERE id = ${row.session_id}
+        AND revoked_at IS NULL
+        AND (
+          refresh_token_hash = ${hash}
+          OR (
+            prev_refresh_token_hash = ${hash}
+            AND rotated_at > now() - make_interval(secs => ${REFRESH_TOKEN_REUSE_GRACE_SECONDS})
+          )
+        )
+      RETURNING id
     `;
+    if (updated.length === 0) return c.json({ error: "UNAUTHORIZED" }, 401);
 
     return c.json({
       accessToken,
@@ -324,7 +351,7 @@ export const authRoutes = new Hono()
     await sql`
       UPDATE device_sessions
       SET revoked_at = now()
-      WHERE refresh_token_hash = ${hash} AND revoked_at IS NULL
+      WHERE (refresh_token_hash = ${hash} OR prev_refresh_token_hash = ${hash}) AND revoked_at IS NULL
     `;
     return c.json({ ok: true });
   })
