@@ -82,22 +82,71 @@ export const transactionsRoutes = new Hono<{ Variables: HonoVariables }>()
           continue;
         }
 
-        await tx.unsafe(
+        const updatedProducts = (await tx.unsafe(
           `
             UPDATE products
             SET stock = GREATEST(0, COALESCE(stock, 0) + $1), updated_at = now(), updated_by = $2, updated_seq = updated_seq + 1
             WHERE id = $3 AND tenant_id = $4 AND deleted_at IS NULL
               -- stock < 0 means unlimited stock; leave it alone (matches the app's local delete).
               AND COALESCE(stock, 0) >= 0
+            RETURNING stock
           `,
           [quantityBase, authUser.id, productId, authUser.tenantId],
-        );
+        )) as { stock: number }[];
+
+        // Record the restore in Riwayat Stok, like the app's local delete does.
+        const stockAfter = updatedProducts[0]?.stock;
+        if (typeof stockAfter === "number") {
+          await tx.unsafe(
+            `
+              INSERT INTO stock_movements (
+                id, tenant_id, product_id, type, quantity_change, stock_before, stock_after,
+                reference_id, created_by, updated_by
+              ) VALUES (gen_random_uuid()::text, $1, $2, 'restore', $3, $4, $5, $6, $7, $7)
+            `,
+            [authUser.tenantId, productId, quantityBase, stockAfter - quantityBase, stockAfter, transaction.id, authUser.id],
+          );
+        }
       }
 
       return transaction;
     });
 
     if (!deleted) {
+      return c.json({ error: "NOT_FOUND" }, 404);
+    }
+
+    return c.json({ ok: true });
+  })
+  // Editing a transaction that is no longer on the device (older than the mobile sync
+  // window): the app restores stock and writes the edited copy locally, so the server
+  // only soft-deletes the original. Restoring stock here too would be overwritten by the
+  // app's absolute stock upload (or counted twice).
+  .post("/:id/supersede", requirePermission("canEditTransactions"), async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const id = c.req.param("id");
+    const { where, params } = buildDeleteWhere(id, authUser);
+
+    const rows = (await sql.unsafe(
+      `
+        UPDATE transactions
+        SET deleted_at = now(), updated_at = now(), updated_by = $${params.length + 1}, updated_seq = updated_seq + 1
+        WHERE ${where.join(" AND ")}
+        RETURNING id
+      `,
+      [...params, authUser.id],
+    )) as { id: string }[];
+
+    if (rows.length === 0) {
+      // A retry after a lost response finds the row already deleted; treat it as done so
+      // the app can still save the edited copy instead of dropping the sale.
+      const retried = (await sql`
+        SELECT id FROM transactions
+        WHERE id = ${id} AND tenant_id = ${authUser.tenantId} AND updated_by = ${authUser.id}
+          AND deleted_at > now() - interval '5 minutes'
+        LIMIT 1
+      `) as unknown as { id: string }[];
+      if (retried.length > 0) return c.json({ ok: true });
       return c.json({ error: "NOT_FOUND" }, 404);
     }
 
