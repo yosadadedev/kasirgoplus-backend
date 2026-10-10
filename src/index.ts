@@ -13,6 +13,7 @@ import { printerSettingsRoutes } from "./routes/printerSettings";
 import { reportsRoutes } from "./routes/reports";
 import { internalAdminRoutes } from "./routes/internalAdmin";
 import { transactionsRoutes } from "./routes/transactions";
+import { expensesRoutes } from "./routes/expenses";
 import { startRecentSyncFlagsScheduler } from "./services/recentSyncFlags";
 
 const app = new Hono();
@@ -53,6 +54,7 @@ app.route("/v1/business-settings", businessSettingsQrisImagePublicRoutes);
 app.route("/v1/business-settings", businessSettingsRoutes);
 app.route("/v1/printer-settings", printerSettingsRoutes);
 app.route("/v1/transactions", transactionsRoutes);
+app.route("/v1/expenses", expensesRoutes);
 app.route("/v1/reports", reportsRoutes);
 app.route("/v1/powersync", powersyncRoutes);
 app.route("/v1/internal-admin", internalAdminRoutes);
