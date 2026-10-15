@@ -179,9 +179,26 @@ const jsonColumns: Record<string, Set<string>> = {
   customers: new Set([]),
 };
 
+// Kolom bigint/int di Postgres. Mobile (SQLite) bisa mengirim angka desimal, misalnya
+// diskon persen 10% x 39998 = 3999.8, yang ditolak Postgres dan membuat antrean upload macet.
+const integerColumns: Record<string, Set<string>> = {
+  categories: new Set(["priority"]),
+  products: new Set(["price", "wholesale_price", "stock", "min_stock", "unit_multiplier", "cost", "priority"]),
+  transactions: new Set(["total", "tax", "discount", "cash_received", "change"]),
+  expenses: new Set(["amount"]),
+  customers: new Set(["total_purchases", "total_spent", "loyalty_points"]),
+  discounts: new Set(["value"]),
+  stock_movements: new Set(["quantity_change", "stock_before", "stock_after"]),
+};
+
 const normalizeValue = (table: string, col: string, value: any) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
+
+  if (integerColumns[table]?.has(col)) {
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+    if (typeof value === "string" && /^-?\d+\.\d+$/.test(value.trim())) return Math.round(Number(value));
+  }
 
   if (booleanColumns[table]?.has(col)) {
     if (value === 1) return true;
