@@ -8,6 +8,7 @@ export const permissionKeys = [
   "canDeleteTransactions",
   "canAddExpenses",
   "canViewReports",
+  "canViewTransactionHistory",
   "canManageQris",
 ] as const;
 
@@ -29,6 +30,7 @@ export const roleDefaultPermissions = (role: Role): Permissions => {
     canDeleteTransactions: false,
     canAddExpenses: true,
     canViewReports: false,
+    canViewTransactionHistory: true,
     canManageQris: false,
   };
   if (role === "owner") return all;
