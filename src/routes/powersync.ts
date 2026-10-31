@@ -250,9 +250,11 @@ powersyncRoutes.post("/upload", async (c: any) => {
     console.info("[powersync.upload]", { tenantId, ops: body.crud.length, summary });
   }
 
+  let currentOp: (typeof body.crud)[number] | null = null;
   try {
     await sql.begin(async (tx) => {
     for (const op of body.crud) {
+      currentOp = op;
       const table = op.table;
       // sync_recent_mobile is maintained by a DB trigger (migration 020).
       const data = pickAllowed(table, op.data ?? {});
@@ -307,11 +309,28 @@ powersyncRoutes.post("/upload", async (c: any) => {
     }
     });
   } catch (e: any) {
-    if (typeof e?.code === "string" && e.code.startsWith("23")) {
-      // Postgres integrity constraint violation class (unique, FK, NOT NULL, CHECK, ...).
-      // Retrying the same batch will never succeed, so surface it as a conflict instead of 500.
+    // Postgres class 23 = integrity constraint violation (unique, FK, NOT NULL, CHECK, ...),
+    // class 22 = data exception (e.g. 22003 integer out of range, 22P02 invalid input).
+    // Retrying the same batch will never succeed, so surface it as a conflict instead of 500,
+    // otherwise the device retries forever and its whole upload queue stalls.
+    if (typeof e?.code === "string" && (e.code.startsWith("23") || e.code.startsWith("22"))) {
+      const failedOp = currentOp as (typeof body.crud)[number] | null;
+      console.warn("[powersync.upload] rejected batch", {
+        tenantId,
+        actorUserId: authUser.id,
+        code: e.code,
+        message: e?.message,
+        op: failedOp?.op,
+        table: failedOp?.table,
+        recordId: failedOp?.id,
+      });
       return c.json(
-        { error: "CONSTRAINT_VIOLATION", code: e.code, constraint: e?.constraint_name, table: e?.table_name },
+        {
+          error: "CONSTRAINT_VIOLATION",
+          code: e.code,
+          constraint: e?.constraint_name,
+          table: e?.table_name ?? failedOp?.table,
+        },
         409,
       );
     }
