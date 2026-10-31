@@ -76,6 +76,19 @@ export const usersRoutes = new Hono<{ Variables: HonoVariables }>()
     }[];
     return c.json({ users: rows });
   })
+  // Nama + role saja, untuk semua user yang login (termasuk kasir), supaya app bisa
+  // menampilkan siapa yang mencatat data tanpa membuka detail akun lewat GET "/".
+  // User nonaktif tetap ikut karena data lama mereka masih tampil di laporan.
+  .get("/directory", async (c: any) => {
+    const authUser = c.get("authUser")!;
+    const rows = (await sql`
+      SELECT id, name, role
+      FROM users
+      WHERE tenant_id = ${authUser.tenantId}
+      ORDER BY created_at DESC
+    `) as unknown as { id: string; name: string; role: Role }[];
+    return c.json({ users: rows });
+  })
   .post("/", requirePermission("canManageCashiers"), async (c: any) => {
     const authUser = c.get("authUser")!;
     const input = CreateUserSchema.parse(await c.req.json());

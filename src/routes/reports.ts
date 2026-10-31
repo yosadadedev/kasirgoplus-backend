@@ -84,6 +84,7 @@ type ExpenseRow = {
   date: string;
   type: string;
   created_at: string;
+  created_by: string | null;
   deleted_at: string | null;
 };
 
@@ -145,6 +146,7 @@ const toExpenseDto = (row: ExpenseRow) => ({
   date: row.date,
   type: row.type ?? "expense",
   created_at: row.created_at,
+  created_by: row.created_by ?? null,
   deleted_at: row.deleted_at ?? null,
 });
 
@@ -213,6 +215,11 @@ const buildExpenseWhere = (input: z.infer<typeof ReportsExpensesQuerySchema>, te
   const cursor = parseCursor(input.cursor);
   const where: string[] = ["tenant_id = $1", "date >= $2", "date <= $3"];
   const params: any[] = [tenantId, input.from, input.to];
+
+  if (input.userId) {
+    where.push(`created_by = $${params.length + 1}`);
+    params.push(input.userId);
+  }
 
   if (input.filterType === "deleted") {
     where.push("deleted_at IS NOT NULL");
@@ -344,6 +351,7 @@ export const reportsRoutes = new Hono<{ Variables: HonoVariables }>()
           date,
           type,
           created_at,
+          created_by,
           deleted_at
         FROM expenses
         WHERE ${where.join(" AND ")}
