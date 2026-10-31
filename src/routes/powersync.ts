@@ -191,13 +191,37 @@ const integerColumns: Record<string, Set<string>> = {
   stock_movements: new Set(["quantity_change", "stock_before", "stock_after"]),
 };
 
+// Subset of integerColumns that are int4 (not bigint) in Postgres. A value past int4 range makes the
+// whole batch fail with 22003 and get discarded, and a checkout batch also carries the sale itself,
+// so clamp instead: an off stock count is recoverable, a lost transaction is not.
+const INT4_MAX = 2_147_483_647;
+const INT4_MIN = -2_147_483_648;
+const int4Columns: Record<string, Set<string>> = {
+  categories: new Set(["priority"]),
+  products: new Set(["stock", "min_stock", "unit_multiplier", "priority"]),
+  customers: new Set(["total_purchases", "loyalty_points"]),
+  stock_movements: new Set(["quantity_change", "stock_before", "stock_after"]),
+};
+
+const clampInt4 = (table: string, col: string, value: number) => {
+  if (!int4Columns[table]?.has(col)) return value;
+  if (value > INT4_MAX || value < INT4_MIN) {
+    console.warn("[powersync.upload] clamped int4 value", { table, col, value });
+    return Math.min(INT4_MAX, Math.max(INT4_MIN, value));
+  }
+  return value;
+};
+
 const normalizeValue = (table: string, col: string, value: any) => {
   if (value === undefined) return undefined;
   if (value === null) return null;
 
   if (integerColumns[table]?.has(col)) {
-    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
-    if (typeof value === "string" && /^-?\d+\.\d+$/.test(value.trim())) return Math.round(Number(value));
+    if (typeof value === "number" && Number.isFinite(value)) return clampInt4(table, col, Math.round(value));
+    if (typeof value === "string" && /^-?\d+\.\d+$/.test(value.trim())) return clampInt4(table, col, Math.round(Number(value)));
+    if (typeof value === "string" && /^-?\d+$/.test(value.trim()) && int4Columns[table]?.has(col)) {
+      return clampInt4(table, col, Number(value));
+    }
   }
 
   if (booleanColumns[table]?.has(col)) {
@@ -323,6 +347,8 @@ powersyncRoutes.post("/upload", async (c: any) => {
         op: failedOp?.op,
         table: failedOp?.table,
         recordId: failedOp?.id,
+        // Full batch so a discarded sale can still be recovered by hand from the logs.
+        crud: JSON.stringify(body.crud),
       });
       return c.json(
         {
