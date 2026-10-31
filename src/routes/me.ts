@@ -18,6 +18,10 @@ const DeleteAccountSchema = z.object({
   password: z.string().min(1),
 });
 
+// Brute-force guard for account deletion (migration 023).
+const DELETE_ACCOUNT_MAX_ATTEMPTS = 5;
+const DELETE_ACCOUNT_LOCK_MINUTES = 15;
+
 const ChangePasswordSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(6),
@@ -34,6 +38,8 @@ type DbUserRow = {
   status: string;
   password_hash: string | null;
   pin_hash?: string | null;
+  delete_failed_attempts?: number;
+  delete_locked_until?: Date | null;
   permissions: Permissions | null;
 };
 
@@ -86,13 +92,26 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
     // Older app versions send no body; let that fail validation (400) instead of a JSON parse 500.
     const input = DeleteAccountSchema.parse(await c.req.json().catch(() => ({})));
     const rows = (await sql<DbUserRow[]>`
-      SELECT id, tenant_id, email, name, phone, role, status, password_hash, pin_hash, permissions
+      SELECT id, tenant_id, email, name, phone, role, status, password_hash, pin_hash,
+        delete_failed_attempts, delete_locked_until, permissions
       FROM users
       WHERE id = ${authUser.id} AND tenant_id = ${authUser.tenantId}
       LIMIT 1
     `) as unknown as DbUserRow[];
     const user = rows[0];
     if (!user) return c.json({ error: "NOT_FOUND" }, 404);
+
+    // While locked, refuse without checking the password at all, so guessing can't continue.
+    const lockedUntilMs = user.delete_locked_until ? new Date(user.delete_locked_until).getTime() : 0;
+    if (lockedUntilMs > Date.now()) {
+      return c.json(
+        {
+          error: "TOO_MANY_ATTEMPTS",
+          retryAfterSeconds: Math.ceil((lockedUntilMs - Date.now()) / 1000),
+        },
+        429,
+      );
+    }
 
     // Same rule as login: the password, or the PIN for cashiers who only have one.
     // 403 rather than 401 so the client doesn't treat a typo as an expired session and refresh.
@@ -101,7 +120,49 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
       : false;
     const pinOk =
       !passwordOk && user.pin_hash ? await verifySecret(input.password, user.pin_hash) : false;
-    if (!passwordOk && !pinOk) return c.json({ error: "INVALID_CREDENTIALS" }, 403);
+    if (!passwordOk && !pinOk) {
+      // One UPDATE so parallel requests can't slip past the limit. An expired lock starts a
+      // fresh count. (SET expressions all read the row's old values.)
+      const [attempt] = (await sql`
+        UPDATE users
+        SET
+          delete_failed_attempts = CASE
+            WHEN delete_locked_until IS NOT NULL AND delete_locked_until <= now() THEN 1
+            ELSE delete_failed_attempts + 1
+          END,
+          delete_locked_until = CASE
+            WHEN (CASE
+              WHEN delete_locked_until IS NOT NULL AND delete_locked_until <= now() THEN 1
+              ELSE delete_failed_attempts + 1
+            END) >= ${DELETE_ACCOUNT_MAX_ATTEMPTS}
+              THEN now() + ${DELETE_ACCOUNT_LOCK_MINUTES}::int * interval '1 minute'
+            WHEN delete_locked_until IS NOT NULL AND delete_locked_until <= now() THEN NULL
+            ELSE delete_locked_until
+          END
+        WHERE id = ${user.id} AND tenant_id = ${user.tenant_id}
+        RETURNING delete_failed_attempts
+      `) as unknown as { delete_failed_attempts: number }[];
+
+      const failed = attempt?.delete_failed_attempts ?? DELETE_ACCOUNT_MAX_ATTEMPTS;
+      console.log(
+        JSON.stringify({
+          event: "me.delete.wrong_password",
+          tenantId: user.tenant_id,
+          userId: user.id,
+          failedAttempts: failed,
+        }),
+      );
+      if (failed >= DELETE_ACCOUNT_MAX_ATTEMPTS) {
+        return c.json(
+          { error: "TOO_MANY_ATTEMPTS", retryAfterSeconds: DELETE_ACCOUNT_LOCK_MINUTES * 60 },
+          429,
+        );
+      }
+      return c.json(
+        { error: "INVALID_CREDENTIALS", remainingAttempts: DELETE_ACCOUNT_MAX_ATTEMPTS - failed },
+        403,
+      );
+    }
 
     const deletedScope = await sql.begin(async (tx: any) => {
       if (user.role === "owner") {
