@@ -1,4 +1,10 @@
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { env } from "../env";
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -195,3 +201,47 @@ export const deleteProductImageFromR2 = (input: { imageKey?: string | null; imag
 
 export const deleteQrisImageFromR2 = (input: { imageKey?: string | null; imageUrl?: string | null }) =>
   deleteImageFromR2(input, getQrisImageKeyFromUrl);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TENANT_IMAGE_DELETE_CONCURRENCY = 10;
+
+// Deletes every object under tenants/{tenantId}/ (product photos, QRIS) when a business is
+// deleted. Uses per-object DeleteObject, which is known to work with R2 here, rather than the
+// batch DeleteObjects call. The UUID check guards against an empty id widening the prefix to
+// every tenant's images.
+export const deleteTenantImagesFromR2 = async (tenantId: string) => {
+  if (!UUID_PATTERN.test(tenantId)) {
+    throw new Error("INVALID_TENANT_ID");
+  }
+
+  const config = getRequiredR2Config();
+  const client = createR2Client();
+  const prefix = `tenants/${tenantId}/`;
+
+  let deleted = 0;
+  let continuationToken: string | undefined;
+  do {
+    const page = await client.send(
+      new ListObjectsV2Command({
+        Bucket: config.bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    const keys = (page.Contents ?? [])
+      .map((object) => object.Key)
+      .filter((key): key is string => Boolean(key && key.startsWith(prefix)));
+
+    for (let i = 0; i < keys.length; i += TENANT_IMAGE_DELETE_CONCURRENCY) {
+      await Promise.all(
+        keys.slice(i, i + TENANT_IMAGE_DELETE_CONCURRENCY).map((key) =>
+          client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key })),
+        ),
+      );
+    }
+    deleted += keys.length;
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return { deleted };
+};

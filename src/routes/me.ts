@@ -7,10 +7,15 @@ import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } f
 import { hashSecret, verifySecret } from "../auth/password";
 import { sha256Hex } from "../auth/crypto";
 import { signAccessToken } from "../auth/jwt";
+import { deleteTenantImagesFromR2 } from "../services/r2";
 
 const UpdateProfileSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().min(1).optional(),
+});
+
+const DeleteAccountSchema = z.object({
+  password: z.string().min(1),
 });
 
 const ChangePasswordSchema = z.object({
@@ -28,6 +33,7 @@ type DbUserRow = {
   role: Role;
   status: string;
   password_hash: string | null;
+  pin_hash?: string | null;
   permissions: Permissions | null;
 };
 
@@ -77,14 +83,25 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
   })
   .delete("/", async (c: any) => {
     const authUser = c.get("authUser")!;
+    // Older app versions send no body; let that fail validation (400) instead of a JSON parse 500.
+    const input = DeleteAccountSchema.parse(await c.req.json().catch(() => ({})));
     const rows = (await sql<DbUserRow[]>`
-      SELECT id, tenant_id, email, name, phone, role, status, password_hash, permissions
+      SELECT id, tenant_id, email, name, phone, role, status, password_hash, pin_hash, permissions
       FROM users
       WHERE id = ${authUser.id} AND tenant_id = ${authUser.tenantId}
       LIMIT 1
     `) as unknown as DbUserRow[];
     const user = rows[0];
     if (!user) return c.json({ error: "NOT_FOUND" }, 404);
+
+    // Same rule as login: the password, or the PIN for cashiers who only have one.
+    // 403 rather than 401 so the client doesn't treat a typo as an expired session and refresh.
+    const passwordOk = user.password_hash
+      ? await verifySecret(input.password, user.password_hash)
+      : false;
+    const pinOk =
+      !passwordOk && user.pin_hash ? await verifySecret(input.password, user.pin_hash) : false;
+    if (!passwordOk && !pinOk) return c.json({ error: "INVALID_CREDENTIALS" }, 403);
 
     const deletedScope = await sql.begin(async (tx: any) => {
       if (user.role === "owner") {
@@ -111,6 +128,27 @@ export const meRoutes = new Hono<{ Variables: HonoVariables }>()
         deletedScope,
       }),
     );
+
+    // The business rows are gone; remove its images too. Runs after the response so a large
+    // catalog doesn't time out the request. A failure is logged with the tenant id so the
+    // prefix tenants/{tenantId}/ can be cleaned up by hand.
+    if (deletedScope === "tenant") {
+      void deleteTenantImagesFromR2(user.tenant_id)
+        .then(({ deleted }) =>
+          console.log(
+            JSON.stringify({ event: "me.delete.r2_cleanup", tenantId: user.tenant_id, deleted }),
+          ),
+        )
+        .catch((error) =>
+          console.error(
+            JSON.stringify({
+              event: "me.delete.r2_cleanup_failed",
+              tenantId: user.tenant_id,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        );
+    }
 
     return c.json({ ok: true, deletedScope });
   })
