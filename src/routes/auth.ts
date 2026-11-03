@@ -5,7 +5,7 @@ import { env } from "../env";
 import { sha256Hex } from "../auth/crypto";
 import { signAccessToken } from "../auth/jwt";
 import { hashSecret, verifySecret } from "../auth/password";
-import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } from "../rbac";
+import { permissionKeys, roleDefaultPermissions, withLegacyPermissions, type Permissions, type Role } from "../rbac";
 import { Resend } from "resend";
 
 const base64Url = (bytes: Uint8Array) => {
@@ -95,7 +95,7 @@ const logSmtp = (event: string, data?: Record<string, unknown>) => {
 
 const normalizePermissions = (role: Role, perms: Permissions | null) => {
   const base = roleDefaultPermissions(role);
-  const merged = { ...base, ...(perms ?? {}) } as Permissions;
+  const merged = { ...base, ...(withLegacyPermissions(perms) ?? {}) } as Permissions;
   const out: Partial<Permissions> = {};
   for (const k of permissionKeys) out[k] = Boolean(merged[k]);
   return out;

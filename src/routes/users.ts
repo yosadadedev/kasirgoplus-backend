@@ -5,7 +5,7 @@ import { hashSecret } from "../auth/password";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/requirePermission";
 import type { HonoVariables } from "../context";
-import { roleDefaultPermissions, type Role } from "../rbac";
+import { roleDefaultPermissions, withLegacyPermissions, type Role } from "../rbac";
 
 const RoleSchema = z.enum(["owner", "admin", "cashier"]);
 
@@ -17,6 +17,7 @@ const PermissionsSchema = z
     canManageDiscounts: z.boolean().optional(),
     canManageCustomers: z.boolean().optional(),
     canEditTransactions: z.boolean().optional(),
+    canManageKasbon: z.boolean().optional(),
     canDeleteTransactions: z.boolean().optional(),
     canAddExpenses: z.boolean().optional(),
     canViewReports: z.boolean().optional(),
@@ -165,7 +166,7 @@ export const usersRoutes = new Hono<{ Variables: HonoVariables }>()
 
     const nextRole = (input.role ?? current.role) as Role;
     const base = roleDefaultPermissions(nextRole);
-    const merged = { ...base, ...(current.permissions ?? {}), ...(input.permissions ?? {}) };
+    const merged = { ...base, ...(withLegacyPermissions(current.permissions) ?? {}), ...(input.permissions ?? {}) };
 
     const passwordHash = input.password ? await hashSecret(input.password) : undefined;
     const pinHash = input.pin ? await hashSecret(input.pin) : undefined;

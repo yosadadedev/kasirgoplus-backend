@@ -5,6 +5,7 @@ export const permissionKeys = [
   "canManageDiscounts",
   "canManageCustomers",
   "canEditTransactions",
+  "canManageKasbon",
   "canDeleteTransactions",
   "canAddExpenses",
   "canViewReports",
@@ -27,6 +28,7 @@ export const roleDefaultPermissions = (role: Role): Permissions => {
     canManageDiscounts: false,
     canManageCustomers: false,
     canEditTransactions: true,
+    canManageKasbon: true,
     canDeleteTransactions: false,
     canAddExpenses: true,
     canViewReports: false,
@@ -38,9 +40,16 @@ export const roleDefaultPermissions = (role: Role): Permissions => {
   return cashier;
 };
 
+// canManageKasbon (Kelola Piutang) was split out of canEditTransactions. Users saved before
+// the split have no canManageKasbon yet; they keep the kasbon access canEditTransactions gave them.
+export const withLegacyPermissions = <T extends Partial<Permissions> | null | undefined>(perms: T): T => {
+  if (!perms || perms.canManageKasbon !== undefined || perms.canEditTransactions === undefined) return perms;
+  return { ...perms, canManageKasbon: perms.canEditTransactions };
+};
+
 export const hasPermission = (role: Role, permissions: Partial<Permissions> | null | undefined, key: PermissionKey) => {
   if (role === "owner") return true;
-  const merged = { ...roleDefaultPermissions(role), ...(permissions ?? {}) } as Permissions;
+  const merged = { ...roleDefaultPermissions(role), ...(withLegacyPermissions(permissions) ?? {}) } as Permissions;
   return Boolean(merged[key]);
 };
 

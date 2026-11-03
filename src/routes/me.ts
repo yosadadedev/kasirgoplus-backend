@@ -3,7 +3,7 @@ import { z } from "zod";
 import { sql } from "../db";
 import { requireAuth } from "../middleware/auth";
 import type { HonoVariables } from "../context";
-import { permissionKeys, roleDefaultPermissions, type Permissions, type Role } from "../rbac";
+import { permissionKeys, roleDefaultPermissions, withLegacyPermissions, type Permissions, type Role } from "../rbac";
 import { hashSecret, verifySecret } from "../auth/password";
 import { sha256Hex } from "../auth/crypto";
 import { signAccessToken } from "../auth/jwt";
@@ -45,7 +45,7 @@ type DbUserRow = {
 
 const normalizePermissions = (role: Role, perms: Permissions | null) => {
   const base = roleDefaultPermissions(role);
-  const merged = { ...base, ...(perms ?? {}) } as Permissions;
+  const merged = { ...base, ...(withLegacyPermissions(perms) ?? {}) } as Permissions;
   const out: Partial<Permissions> = {};
   for (const k of permissionKeys) out[k] = Boolean(merged[k]);
   return out;
