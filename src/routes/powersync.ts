@@ -13,6 +13,8 @@ const OpSchema = z.object({
     "customers",
     "discounts",
     "stock_movements",
+    "shifts",
+    "cash_movements",
   ]),
   id: z.string(),
   data: z.record(z.any()).optional(),
@@ -83,6 +85,10 @@ const allowedColumns: Record<string, Set<string>> = {
     "notes",
     "sequence_number",
     "table_number",
+    "shift_id",
+    "settled_at",
+    "settled_by",
+    "settled_shift_id",
     "created_at",
     "updated_at",
     "created_by",
@@ -160,6 +166,47 @@ const allowedColumns: Record<string, Set<string>> = {
     "deleted_at",
     "updated_seq",
   ]),
+  shifts: new Set([
+    "id",
+    "tenant_id",
+    "device_id",
+    "device_name",
+    "status",
+    "opened_at",
+    "opened_by",
+    "opened_by_name",
+    "opening_cash",
+    "closed_at",
+    "closed_by",
+    "closed_by_name",
+    "counted_cash",
+    "expected_cash",
+    "difference",
+    "summary",
+    "notes",
+    "force_closed",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "deleted_at",
+    "updated_seq",
+  ]),
+  cash_movements: new Set([
+    "id",
+    "tenant_id",
+    "shift_id",
+    "type",
+    "amount",
+    "reason",
+    "expense_id",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "deleted_at",
+    "updated_seq",
+  ]),
 };
 
 const booleanColumns: Record<string, Set<string>> = {
@@ -169,6 +216,7 @@ const booleanColumns: Record<string, Set<string>> = {
   expenses: new Set([]),
   customers: new Set(["is_active"]),
   discounts: new Set(["is_active"]),
+  shifts: new Set(["force_closed"]),
 };
 
 const jsonColumns: Record<string, Set<string>> = {
@@ -177,6 +225,7 @@ const jsonColumns: Record<string, Set<string>> = {
   transactions: new Set(["items"]),
   expenses: new Set([]),
   customers: new Set([]),
+  shifts: new Set(["summary"]),
 };
 
 // Kolom bigint/int di Postgres. Mobile (SQLite) bisa mengirim angka desimal, misalnya
@@ -189,6 +238,8 @@ const integerColumns: Record<string, Set<string>> = {
   customers: new Set(["total_purchases", "total_spent", "loyalty_points"]),
   discounts: new Set(["value"]),
   stock_movements: new Set(["quantity_change", "stock_before", "stock_after"]),
+  shifts: new Set(["opening_cash", "counted_cash", "expected_cash", "difference"]),
+  cash_movements: new Set(["amount"]),
 };
 
 // Subset of integerColumns that are int4 (not bigint) in Postgres. A value past int4 range makes the

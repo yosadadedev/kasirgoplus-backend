@@ -25,6 +25,8 @@ const UpdateBusinessSettingsSchema = z
     taxRate: z.number().min(0).max(100).optional(),
     qrisMerchantName: z.string().optional(),
     qrisActive: z.boolean().optional(),
+    shiftEnabled: z.boolean().optional(),
+    shiftBlindClose: z.boolean().optional(),
   })
   .passthrough();
 
@@ -42,6 +44,8 @@ const mapBusinessRow = (r: any) => ({
   qrisImageUrl: r?.qris_image_url ?? undefined,
   qrisMerchantName: r?.qris_merchant_name ?? "",
   qrisActive: Boolean(r?.qris_active),
+  shiftEnabled: Boolean(r?.shift_enabled),
+  shiftBlindClose: Boolean(r?.shift_blind_close),
 });
 
 const QRIS_IMAGE_PROXY_PREFIX = "/v1/business-settings/qris-image/";
@@ -108,6 +112,8 @@ const upsertBusinessSettings = async (
     taxRate?: number;
     qrisMerchantName?: string;
     qrisActive?: boolean;
+    shiftEnabled?: boolean;
+    shiftBlindClose?: boolean;
   },
 ) => {
   const id = `business_${tenantId}`;
@@ -125,6 +131,8 @@ const upsertBusinessSettings = async (
       tax_rate,
       qris_merchant_name,
       qris_active,
+      shift_enabled,
+      shift_blind_close,
       updated_at,
       created_at,
       created_by,
@@ -144,6 +152,8 @@ const upsertBusinessSettings = async (
       ${patch.taxRate != null ? Math.round(patch.taxRate) : 0},
       ${patch.qrisMerchantName ?? ""},
       ${patch.qrisActive ?? false},
+      ${patch.shiftEnabled ?? false},
+      ${patch.shiftBlindClose ?? false},
       now(),
       now(),
       ${authUserId},
@@ -161,6 +171,8 @@ const upsertBusinessSettings = async (
       tax_rate = COALESCE(${patch.taxRate != null ? Math.round(patch.taxRate) : null}, business_settings.tax_rate),
       qris_merchant_name = COALESCE(${patch.qrisMerchantName ?? null}, business_settings.qris_merchant_name),
       qris_active = COALESCE(${patch.qrisActive ?? null}, business_settings.qris_active),
+      shift_enabled = COALESCE(${patch.shiftEnabled ?? null}, business_settings.shift_enabled),
+      shift_blind_close = COALESCE(${patch.shiftBlindClose ?? null}, business_settings.shift_blind_close),
       updated_at = now(),
       updated_by = ${authUserId},
       updated_seq = business_settings.updated_seq + 1
@@ -178,7 +190,9 @@ const upsertBusinessSettings = async (
       logo,
       qris_image_url,
       qris_merchant_name,
-      qris_active
+      qris_active,
+      shift_enabled,
+      shift_blind_close
   `) as unknown as any[];
   return rows[0]!;
 };
@@ -251,7 +265,9 @@ const upsertQrisImageUrl = async (
       logo,
       qris_image_url,
       qris_merchant_name,
-      qris_active
+      qris_active,
+      shift_enabled,
+      shift_blind_close
   `) as unknown as any[];
   return rows[0]!;
 };
@@ -260,22 +276,10 @@ export const businessSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
   .use("*", requireAuth)
   .get("/", async (c: any) => {
     const authUser = c.get("authUser")!;
+    // SELECT * so this keeps working if the code is live before its migration has run
+    // (columns that don't exist yet just map to their defaults in mapBusinessRow).
     const rows = (await sql`
-      SELECT
-        business_name,
-        business_address,
-        business_phone,
-        business_email,
-        business_city,
-        operational_open_time,
-        operational_close_time,
-        tax_rate,
-        currency,
-        logo,
-        qris_image_url,
-        qris_merchant_name,
-        qris_active,
-        updated_at
+      SELECT *
       FROM business_settings
       WHERE tenant_id = ${authUser.tenantId} AND deleted_at IS NULL
       ORDER BY updated_at DESC
