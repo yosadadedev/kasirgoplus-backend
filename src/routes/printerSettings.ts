@@ -27,6 +27,7 @@ const PrinterSettingsPatchSchema = z
     showSequenceNumber: z.boolean().optional(),
     showTableNumber: z.boolean().optional(),
     autoPrintReceipt: z.boolean().optional(),
+    showMemberPoints: z.boolean().optional(),
     lastConnectedDeviceAddress: z.string().nullable().optional(),
     lastConnectedDeviceName: z.string().nullable().optional(),
   })
@@ -53,6 +54,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         show_sequence_number,
         show_table_number,
         auto_print_receipt,
+        show_member_points,
         last_connected_device_address,
         last_connected_device_name,
         updated_at
@@ -79,6 +81,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         showSequenceNumber: r?.show_sequence_number == null ? true : toBool(r?.show_sequence_number, true),
         showTableNumber: r?.show_table_number == null ? true : toBool(r?.show_table_number, true),
         autoPrintReceipt: toBool(r?.auto_print_receipt, false),
+        showMemberPoints: toBool(r?.show_member_points, false),
         lastConnectedDeviceAddress: r?.last_connected_device_address ?? null,
         lastConnectedDeviceName: r?.last_connected_device_name ?? null,
       },
@@ -109,6 +112,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         show_sequence_number,
         show_table_number,
         auto_print_receipt,
+        show_member_points,
         last_connected_device_address,
         last_connected_device_name,
         updated_at,
@@ -135,6 +139,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         ${input.showSequenceNumber ?? true},
         ${input.showTableNumber ?? true},
         ${input.autoPrintReceipt ?? false},
+        ${input.showMemberPoints ?? false},
         ${input.lastConnectedDeviceAddress ?? null},
         ${input.lastConnectedDeviceName ?? null},
         now(),
@@ -159,6 +164,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         show_sequence_number = COALESCE(${input.showSequenceNumber ?? null}, printer_settings.show_sequence_number),
         show_table_number = COALESCE(${input.showTableNumber ?? null}, printer_settings.show_table_number),
         auto_print_receipt = COALESCE(${input.autoPrintReceipt ?? null}, printer_settings.auto_print_receipt),
+        show_member_points = COALESCE(${input.showMemberPoints ?? null}, printer_settings.show_member_points),
         last_connected_device_address = COALESCE(${input.lastConnectedDeviceAddress ?? null}, printer_settings.last_connected_device_address),
         last_connected_device_name = COALESCE(${input.lastConnectedDeviceName ?? null}, printer_settings.last_connected_device_name),
         updated_at = now(),
@@ -181,6 +187,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         show_sequence_number,
         show_table_number,
         auto_print_receipt,
+        show_member_points,
         last_connected_device_address,
         last_connected_device_name
     `) as unknown as any[];
@@ -202,6 +209,7 @@ export const printerSettingsRoutes = new Hono<{ Variables: HonoVariables }>()
         showSequenceNumber: r.show_sequence_number == null ? true : toBool(r.show_sequence_number, true),
         showTableNumber: r.show_table_number == null ? true : toBool(r.show_table_number, true),
         autoPrintReceipt: toBool(r.auto_print_receipt, false),
+        showMemberPoints: toBool(r.show_member_points, false),
         lastConnectedDeviceAddress: r.last_connected_device_address ?? null,
         lastConnectedDeviceName: r.last_connected_device_name ?? null,
       },
